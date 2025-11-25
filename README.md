@@ -1,73 +1,57 @@
-# Welcome to your Lovable project
+# 🛡️ SentinAL: Agentic Fraud Detection with GraphRAG
 
-## Project info
+**SentinAL** is a privacy-first fraud detection system that combines **Graph Neural Networks (GNNs)** with **Local Generative AI** to identify and explain complex money laundering rings.
 
-**URL**: https://lovable.dev/projects/84bafcef-0f37-428c-b656-0efbddc512c2
+Unlike standard "black box" models that only output a probability score, SentinAL uses an **AI Agent** to analyze transaction topology and generate human-readable compliance reports—all without sending sensitive financial data to the cloud.
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## 📸 Project Demo
 
-**Use Lovable**
+### 1. The Intelligence (Backend)
+*The core AI agent detecting a money laundering ring using local Llama 3.2:*
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/84bafcef-0f37-428c-b656-0efbddc512c2) and start prompting.
 
-Changes made via Lovable will be committed automatically to this repo.
+### 2. The Interface (Frontend)
+*The analyst dashboard visualizing the detected fraud ring:*
 
-**Use your preferred IDE**
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## 🚀 Key Features
 
-Follow these steps:
+* **Graph Neural Network (R-GCN):** Uses Relational Graph Convolutional Networks to detect "cyclic" transaction patterns (A → B → C → A) that traditional tabular models miss.
+* **GraphRAG Explanation Agent:** A custom AI agent that retrieves topological subgraphs (k-hop neighbors) and uses a local LLM to explain *why* a user was flagged.
+* **Privacy-First Architecture:** Runs 100% locally using **Ollama** (Llama 3.2 1B), ensuring no financial data leaves the secure environment.
+* **Interactive Dashboard:** A React/TypeScript UI for compliance officers to visualize risk scores and transaction flows.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## 🛠️ Tech Stack
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+* **AI/ML:** Python, PyTorch Geometric, NetworkX, Scikit-learn
+* **GenAI:** LangChain, Ollama (Llama 3.2), Prompt Engineering
+* **Frontend:** React, TypeScript, Vite, Tailwind CSS, Shadcn UI
+* **Data:** Synthetic financial graph generation with injected fraud topologies
 
-# Step 3: Install the necessary dependencies.
-npm i
+---
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+## 💻 How to Run
 
-**Edit a file directly in GitHub**
+### 1. Start the AI Backend
+The backend handles data generation, model training, and the explanation agent.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+# Navigate to python folder
+cd python
 
-**Use GitHub Codespaces**
+# Install dependencies
+pip install -r requirements.txt
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+# 1. Generate synthetic data
+python data_gen.py
 
-## What technologies are used for this project?
+# 2. Train the Fraud Detection Model (R-GCN)
+python gnn_train.py
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/84bafcef-0f37-428c-b656-0efbddc512c2) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+# 3. Run the Explanation Agent
+# Ensure Ollama is running first ('ollama serve')
+python agent_explainer.py --user_id 77 --model llama3.2:1b
