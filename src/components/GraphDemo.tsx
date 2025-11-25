@@ -6,22 +6,25 @@ import { AlertCircle, CheckCircle } from "lucide-react";
 export const GraphDemo = () => {
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
   
+  // Data matches the Python backend result for User 77's fraud ring
   const nodes = [
-    { id: 0, x: 200, y: 100, fraud: false, label: "User A" },
-    { id: 1, x: 350, y: 100, fraud: false, label: "User B" },
-    { id: 2, x: 200, y: 250, fraud: false, label: "User C" },
-    { id: 3, x: 350, y: 250, fraud: true, label: "User D" },
-    { id: 4, x: 275, y: 175, fraud: true, label: "User E" },
-    { id: 5, x: 450, y: 175, fraud: true, label: "User F" },
+    { id: 77, x: 350, y: 100, fraud: true, label: "User 77" },
+    { id: 81, x: 500, y: 175, fraud: true, label: "User 81" },
+    { id: 87, x: 425, y: 300, fraud: true, label: "User 87" },
+    { id: 82, x: 275, y: 300, fraud: true, label: "User 82" },
+    { id: 9,  x: 200, y: 175, fraud: true, label: "User 9" },
+    { id: 64, x: 100, y: 100, fraud: false, label: "User 64" }, // Innocent
   ];
-  
+
   const edges = [
-    { from: 0, to: 1, amount: "$500" },
-    { from: 1, to: 2, amount: "$300" },
-    { from: 3, to: 4, amount: "$1200", fraud: true },
-    { from: 4, to: 5, amount: "$1150", fraud: true },
-    { from: 5, to: 3, amount: "$1100", fraud: true },
-    { from: 2, to: 3, amount: "$200" },
+    // The Cyclic Money Laundering Loop
+    { from: 77, to: 81, amount: "$12,000", fraud: true },
+    { from: 81, to: 87, amount: "$11,500", fraud: true },
+    { from: 87, to: 82, amount: "$11,200", fraud: true },
+    { from: 82, to: 9,  amount: "$10,800", fraud: true },
+    { from: 9,  to: 77, amount: "$10,500", fraud: true }, // Loop closed
+    // Normal transaction
+    { from: 64, to: 77, amount: "$200", fraud: false },
   ];
   
   return (
@@ -38,7 +41,7 @@ export const GraphDemo = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <Card className="p-6 bg-card">
               <h3 className="font-semibold mb-4 text-card-foreground">Transaction Network</h3>
-              <svg className="w-full h-80 border border-border rounded-lg bg-background" viewBox="0 0 500 300">
+              <svg className="w-full h-80 border border-border rounded-lg bg-background" viewBox="0 0 600 400">
                 {/* Render edges first */}
                 {edges.map((edge, idx) => {
                   const fromNode = nodes.find(n => n.id === edge.from)!;
@@ -60,6 +63,7 @@ export const GraphDemo = () => {
                         fill="hsl(var(--muted-foreground))"
                         fontSize="10"
                         textAnchor="middle"
+                        dy={-5}
                       >
                         {edge.amount}
                       </text>
@@ -135,41 +139,38 @@ export const GraphDemo = () => {
                     </div>
                   </div>
                   
-                  {selectedNode === 3 && (
+                  {selectedNode === 77 && (
                     <div className="space-y-3">
                       <div className="p-4 rounded-lg border border-border bg-background">
                         <p className="font-medium mb-2 text-foreground">GNN Detection</p>
                         <p className="text-sm text-muted-foreground">
-                          Fraud probability: <span className="font-semibold text-graph-fraud">0.94</span>
+                          Fraud probability: <span className="font-semibold text-graph-fraud">1.00</span>
                         </p>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Reason: Participant in cyclic transaction pattern
+                          Reason: Cyclic topology detected in 2-hop neighborhood
                         </p>
                       </div>
                       
                       <div className="p-4 rounded-lg border border-accent/20 bg-accent/5">
                         <p className="font-medium mb-2 text-foreground flex items-center gap-2">
-                          <span>🤖</span> Agent Explanation
+                          <span>🤖</span> Agent Report
                         </p>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          User D is part of a suspected money laundering ring. Analysis shows a cyclic flow pattern: D → E ($1,200) → F ($1,150) → back to D ($1,100). This circular movement of funds with minimal value loss is a classic layering technique used to obscure the origin of funds.
+                          **Topological Anomaly Detected:** User 77 is part of a closed flow loop involving Users 81, 87, 82, and 9. Funds travel sequentially through these nodes and return to User 77 ($10,500), indicating a layering attempt. Status: ANOMALOUS.
                         </p>
                       </div>
                       
                       <Button size="sm" variant="outline" className="w-full">
-                        View Full Report
+                        Download Compliance PDF
                       </Button>
                     </div>
                   )}
                   
-                  {selectedNode === 0 && (
+                  {(selectedNode !== 77) && (
                     <div className="p-4 rounded-lg border border-border bg-background">
-                      <p className="font-medium mb-2 text-foreground">GNN Detection</p>
+                      <p className="font-medium mb-2 text-foreground">Analysis</p>
                       <p className="text-sm text-muted-foreground">
-                        Fraud probability: <span className="font-semibold text-graph-safe">0.05</span>
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Normal transaction patterns detected. No suspicious connections.
+                        Click on User 77 to see the detailed fraud ring analysis.
                       </p>
                     </div>
                   )}
