@@ -310,7 +310,7 @@ def main():
     
     # Load data
     print("\nLoading graph data...")
-    data = torch.load('data/graph_pyg.pt')
+    data = torch.load('data/graph_pyg.pt', weights_only=False)
     print(f"✓ Loaded graph with {data.num_nodes} nodes and {data.num_edges} edges")
     
     # Initialize trainer
