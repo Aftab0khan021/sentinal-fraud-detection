@@ -15,7 +15,7 @@ Unlike standard "black box" models that only output a probability score, SentinA
 
 ### 2. The Interface (Frontend)
 *The analyst dashboard visualizing the detected fraud ring:*
-<img width="1280" height="677" alt="Screenshot 2025-11-26 022441" src="https://github.com/user-attachments/assets/2d2c1e91-06df-4fcc-a58b-0c96d178b524" />
+<img width="1297" height="661" alt="image" src="https://github.com/user-attachments/assets/5f18fa7e-6021-4d27-8ead-b7714d86c227" />
 
 
 ---
