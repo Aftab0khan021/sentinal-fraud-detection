@@ -10,10 +10,12 @@ Unlike standard "black box" models that only output a probability score, SentinA
 
 ### 1. The Intelligence (Backend)
 *The core AI agent detecting a money laundering ring using local Llama 3.2:*
+<img width="1024" height="581" alt="Screenshot 2025-11-26 022607" src="https://github.com/user-attachments/assets/92ffc80a-d03e-4df3-ba59-43676e4247f4" />
 
 
 ### 2. The Interface (Frontend)
 *The analyst dashboard visualizing the detected fraud ring:*
+<img width="1280" height="677" alt="Screenshot 2025-11-26 022441" src="https://github.com/user-attachments/assets/2d2c1e91-06df-4fcc-a58b-0c96d178b524" />
 
 
 ---
