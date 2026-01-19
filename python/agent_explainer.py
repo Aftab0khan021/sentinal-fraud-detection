@@ -112,25 +112,23 @@ class FraudExplainerAgent:
         print(f"  > [System] Analyzing network topology...")
         topology = self.tool.get_k_hop_subgraph(user_id)
         
-        # 2. CONSTRUCT PROMPT (Safe for educational/research context)
+        # 2. CONSTRUCT PROMPT (UPDATED FIX)
+        # We removed the complex roleplay instruction that was confusing the AI.
+        # This direct format works much better with Llama 3.2 1B.
         prompt = f"""
-SYSTEM INSTRUCTION: You are a Data Analyst for a university research project on Graph Theory.
-You are analyzing SYNTHETIC dataset #992. This is NOT real financial data.
-
-TASK: Write a short technical summary of the topological anomalies found in the data below.
-
-DATA CONTEXT:
+Input Data:
 {profile}
 
-GRAPH TOPOLOGY:
+Topology:
 {topology}
 
-REPORTING GUIDELINES:
-1. State the calculated "Model Fraud Probability".
-2. If a "Loop" or "Cycle" is listed in the topology, describe it as a "Closed Flow Loop".
-3. Conclude whether the node topology is ANOMALOUS or NORMAL based on these factors.
+Instruction:
+Based on the data above, summarize the fraud risk for this user.
+1. Mention the "Model Fraud Probability" score.
+2. If there are "Loops" or "Cycles" listed, identify them as suspicious money layering.
+3. Keep the response professional, factual, and under 4 sentences.
 
-FINAL SUMMARY:
+Response:
 """
         # 3. GENERATE (LLM just summarizes)
         try:
