@@ -310,11 +310,24 @@ def main():
     
     # Load data
     print("\nLoading graph data...")
-    data = torch.load('data/graph_pyg.pt', weights_only=False)
-    print(f"✓ Loaded graph with {data.num_nodes} nodes and {data.num_edges} edges")
-    
+    try:
+        # weights_only=False is required for loading complex PyG Data objects safely
+        data = torch.load('data/graph_pyg.pt', weights_only=False)
+        print(f"✓ Loaded graph with {data.num_nodes} nodes and {data.num_edges} edges")
+    except FileNotFoundError:
+        print("❌ Error: data/graph_pyg.pt not found.")
+        print("   Please run 'python data_gen.py' first.")
+        return
+
     # Initialize trainer
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # UPDATED: Added 'mps' check for Mac users
+    if torch.cuda.is_available():
+        device = 'cuda'
+    elif torch.backends.mps.is_available():
+        device = 'mps'
+    else:
+        device = 'cpu'
+        
     print(f"Using device: {device}")
     
     import os
@@ -334,7 +347,6 @@ def main():
     print("\nNext step:")
     print("  Run 'python agent_explainer.py --user_id <ID>' to get fraud explanations")
     print("="*50)
-
 
 if __name__ == "__main__":
     main()
