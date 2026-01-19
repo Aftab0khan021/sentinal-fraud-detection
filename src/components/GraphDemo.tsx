@@ -3,7 +3,6 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { AlertCircle, CheckCircle } from "lucide-react";
 
-// Define the structure for our reports
 type AnalysisReport = {
   score: string;
   reason: string;
@@ -29,12 +28,12 @@ export const GraphDemo = () => {
     { from: 81, to: 87, amount: "$11,500", fraud: true },
     { from: 87, to: 82, amount: "$11,200", fraud: true },
     { from: 82, to: 9,  amount: "$10,800", fraud: true },
-    { from: 9,  to: 77, amount: "$10,500", fraud: true }, // Loop closed
+    { from: 9,  to: 77, amount: "$10,500", fraud: true }, 
     // Normal transaction
     { from: 64, to: 77, amount: "$200", fraud: false },
   ];
 
-  // 1. ADDED: A dictionary of reports for ALL nodes
+  // Dynamic Reports Dictionary
   const reports: Record<number, AnalysisReport> = {
     77: {
       score: "1.00",
@@ -44,27 +43,27 @@ export const GraphDemo = () => {
     81: {
       score: "0.98",
       reason: "High-value intermediary in cyclic flow",
-      agentText: "**Money Mule Indicator:** User 81 received $12,000 and immediately transferred $11,500 to User 87. Retention rate is <5%, which is consistent with mule account behavior. Part of 5-node cycle."
+      agentText: "**Money Mule Indicator:** User 81 received $12,000 and immediately transferred $11,500 to User 87. Retention rate is <5%, which is consistent with mule account behavior."
     },
     87: {
       score: "0.98",
       reason: "Rapid fund pass-through detected",
-      agentText: "**Layering Node:** User 87 participates in the ring structure. Transaction timestamps show funds were held for less than 1 hour before moving to User 82. High likelihood of automated laundering bot."
+      agentText: "**Layering Node:** User 87 participates in the ring structure. Transaction timestamps show funds were held for less than 1 hour before moving to User 82."
     },
     82: {
       score: "0.99",
       reason: "Cyclic topology (Rank 2 Suspicion)",
-      agentText: "**Active Fraud Participant:** User 82 acts as the fourth hop in the detected ring. Connected strongly to User 87 (In) and User 9 (Out). No legitimate business purpose identified for these transfers."
+      agentText: "**Active Fraud Participant:** User 82 acts as the fourth hop in the detected ring. Connected strongly to User 87 (In) and User 9 (Out)."
     },
     9: {
       score: "0.97",
       reason: "Loop closer node",
-      agentText: "**Cycle Completion:** User 9 is responsible for returning the layered funds back to the source (User 77). This completes the 'Round Tripping' pattern. Recommended for immediate account freeze."
+      agentText: "**Cycle Completion:** User 9 is responsible for returning the layered funds back to the source (User 77). This completes the 'Round Tripping' pattern."
     },
     64: {
       score: "0.02",
       reason: "Normal transaction behavior",
-      agentText: "**Safe User:** User 64 has a single low-value payment ($200) to User 77. No connection to the fraud ring's internal cycle. Account age > 2 years. Status: NORMAL."
+      agentText: "**Safe User:** User 64 has a single low-value payment ($200) to User 77. No connection to the fraud ring's internal cycle. Status: NORMAL."
     }
   };
 
@@ -89,8 +88,12 @@ export const GraphDemo = () => {
               <svg className="w-full h-80 border border-border rounded-lg bg-background" viewBox="0 0 600 400">
                 {/* Render edges first */}
                 {edges.map((edge, idx) => {
-                  const fromNode = nodes.find(n => n.id === edge.from)!;
-                  const toNode = nodes.find(n => n.id === edge.to)!;
+                  const fromNode = nodes.find(n => n.id === edge.from);
+                  const toNode = nodes.find(n => n.id === edge.to);
+                  
+                  // SAFETY CHECK: Skip edges with missing nodes
+                  if (!fromNode || !toNode) return null;
+
                   return (
                     <g key={idx}>
                       <line
@@ -166,7 +169,7 @@ export const GraphDemo = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Header: User ID + Status */}
+                  {/* Header */}
                   <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
                     {activeNode?.fraud ? (
                       <AlertCircle className="h-6 w-6 text-graph-fraud flex-shrink-0 mt-0.5" />
@@ -175,7 +178,7 @@ export const GraphDemo = () => {
                     )}
                     <div>
                       <p className="font-semibold mb-1 text-card-foreground">
-                        {activeNode?.label}
+                        {activeNode?.label || `User ${selectedNode}`}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {activeNode?.fraud 
@@ -186,7 +189,7 @@ export const GraphDemo = () => {
                     </div>
                   </div>
                   
-                  {/* Dynamic Report Content */}
+                  {/* Report Details */}
                   {activeReport ? (
                     <div className="space-y-3">
                       <div className="p-4 rounded-lg border border-border bg-background">
