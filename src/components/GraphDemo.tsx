@@ -3,6 +3,13 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { AlertCircle, CheckCircle } from "lucide-react";
 
+// Define the structure for our reports
+type AnalysisReport = {
+  score: string;
+  reason: string;
+  agentText: string;
+};
+
 export const GraphDemo = () => {
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
   
@@ -26,7 +33,44 @@ export const GraphDemo = () => {
     // Normal transaction
     { from: 64, to: 77, amount: "$200", fraud: false },
   ];
-  
+
+  // 1. ADDED: A dictionary of reports for ALL nodes
+  const reports: Record<number, AnalysisReport> = {
+    77: {
+      score: "1.00",
+      reason: "Cyclic topology detected in 2-hop neighborhood",
+      agentText: "**Topological Anomaly Detected:** User 77 is the potential originator of a closed flow loop involving Users 81, 87, 82, and 9. Funds travel sequentially and return to User 77 ($10,500), indicating a layering attempt. Status: ANOMALOUS."
+    },
+    81: {
+      score: "0.98",
+      reason: "High-value intermediary in cyclic flow",
+      agentText: "**Money Mule Indicator:** User 81 received $12,000 and immediately transferred $11,500 to User 87. Retention rate is <5%, which is consistent with mule account behavior. Part of 5-node cycle."
+    },
+    87: {
+      score: "0.98",
+      reason: "Rapid fund pass-through detected",
+      agentText: "**Layering Node:** User 87 participates in the ring structure. Transaction timestamps show funds were held for less than 1 hour before moving to User 82. High likelihood of automated laundering bot."
+    },
+    82: {
+      score: "0.99",
+      reason: "Cyclic topology (Rank 2 Suspicion)",
+      agentText: "**Active Fraud Participant:** User 82 acts as the fourth hop in the detected ring. Connected strongly to User 87 (In) and User 9 (Out). No legitimate business purpose identified for these transfers."
+    },
+    9: {
+      score: "0.97",
+      reason: "Loop closer node",
+      agentText: "**Cycle Completion:** User 9 is responsible for returning the layered funds back to the source (User 77). This completes the 'Round Tripping' pattern. Recommended for immediate account freeze."
+    },
+    64: {
+      score: "0.02",
+      reason: "Normal transaction behavior",
+      agentText: "**Safe User:** User 64 has a single low-value payment ($200) to User 77. No connection to the fraud ring's internal cycle. Account age > 2 years. Status: NORMAL."
+    }
+  };
+
+  const activeReport = selectedNode ? reports[selectedNode] : null;
+  const activeNode = nodes.find(n => n.id === selectedNode);
+
   return (
     <section className="bg-muted/30 py-20">
       <div className="container mx-auto px-4">
@@ -39,6 +83,7 @@ export const GraphDemo = () => {
           </p>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* LEFT COLUMN: THE GRAPH */}
             <Card className="p-6 bg-card">
               <h3 className="font-semibold mb-4 text-card-foreground">Transaction Network</h3>
               <svg className="w-full h-80 border border-border rounded-lg bg-background" viewBox="0 0 600 400">
@@ -112,6 +157,7 @@ export const GraphDemo = () => {
               </div>
             </Card>
             
+            {/* RIGHT COLUMN: THE ANALYSIS REPORT */}
             <Card className="p-6 bg-card">
               <h3 className="font-semibold mb-4 text-card-foreground">Analysis Result</h3>
               {selectedNode === null ? (
@@ -120,18 +166,19 @@ export const GraphDemo = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* Header: User ID + Status */}
                   <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
-                    {nodes.find(n => n.id === selectedNode)?.fraud ? (
+                    {activeNode?.fraud ? (
                       <AlertCircle className="h-6 w-6 text-graph-fraud flex-shrink-0 mt-0.5" />
                     ) : (
                       <CheckCircle className="h-6 w-6 text-graph-safe flex-shrink-0 mt-0.5" />
                     )}
                     <div>
                       <p className="font-semibold mb-1 text-card-foreground">
-                        {nodes.find(n => n.id === selectedNode)?.label}
+                        {activeNode?.label}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {nodes.find(n => n.id === selectedNode)?.fraud 
+                        {activeNode?.fraud 
                           ? "⚠️ High fraud probability detected"
                           : "✓ No suspicious activity detected"
                         }
@@ -139,15 +186,18 @@ export const GraphDemo = () => {
                     </div>
                   </div>
                   
-                  {selectedNode === 77 && (
+                  {/* Dynamic Report Content */}
+                  {activeReport ? (
                     <div className="space-y-3">
                       <div className="p-4 rounded-lg border border-border bg-background">
                         <p className="font-medium mb-2 text-foreground">GNN Detection</p>
                         <p className="text-sm text-muted-foreground">
-                          Fraud probability: <span className="font-semibold text-graph-fraud">1.00</span>
+                          Fraud probability: <span className={`font-semibold ${activeNode?.fraud ? "text-graph-fraud" : "text-graph-safe"}`}>
+                            {activeReport.score}
+                          </span>
                         </p>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Reason: Cyclic topology detected in 2-hop neighborhood
+                          Reason: {activeReport.reason}
                         </p>
                       </div>
                       
@@ -156,7 +206,7 @@ export const GraphDemo = () => {
                           <span>🤖</span> Agent Report
                         </p>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          **Topological Anomaly Detected:** User 77 is part of a closed flow loop involving Users 81, 87, 82, and 9. Funds travel sequentially through these nodes and return to User 77 ($10,500), indicating a layering attempt. Status: ANOMALOUS.
+                          {activeReport.agentText}
                         </p>
                       </div>
                       
@@ -164,13 +214,10 @@ export const GraphDemo = () => {
                         Download Compliance PDF
                       </Button>
                     </div>
-                  )}
-                  
-                  {(selectedNode !== 77) && (
+                  ) : (
                     <div className="p-4 rounded-lg border border-border bg-background">
-                      <p className="font-medium mb-2 text-foreground">Analysis</p>
                       <p className="text-sm text-muted-foreground">
-                        Click on User 77 to see the detailed fraud ring analysis.
+                        No detailed report available for this node.
                       </p>
                     </div>
                   )}
