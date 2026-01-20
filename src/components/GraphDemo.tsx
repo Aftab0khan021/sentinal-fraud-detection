@@ -1,73 +1,70 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
+// Updated type to match API response
 type AnalysisReport = {
   score: string;
+  is_fraud: boolean;
   reason: string;
-  agentText: string;
+  agent_report: string;
 };
 
 export const GraphDemo = () => {
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [activeReport, setActiveReport] = useState<AnalysisReport | null>(null);
   
-  // Data matches the Python backend result for User 77's fraud ring
+  // Visual Graph Data (Keep this hardcoded for the Visual Demo)
   const nodes = [
     { id: 77, x: 350, y: 100, fraud: true, label: "User 77" },
     { id: 81, x: 500, y: 175, fraud: true, label: "User 81" },
     { id: 87, x: 425, y: 300, fraud: true, label: "User 87" },
     { id: 82, x: 275, y: 300, fraud: true, label: "User 82" },
     { id: 9,  x: 200, y: 175, fraud: true, label: "User 9" },
-    { id: 64, x: 100, y: 100, fraud: false, label: "User 64" }, // Innocent
+    { id: 64, x: 100, y: 100, fraud: false, label: "User 64" },
   ];
 
   const edges = [
-    // The Cyclic Money Laundering Loop
     { from: 77, to: 81, amount: "$12,000", fraud: true },
     { from: 81, to: 87, amount: "$11,500", fraud: true },
     { from: 87, to: 82, amount: "$11,200", fraud: true },
     { from: 82, to: 9,  amount: "$10,800", fraud: true },
     { from: 9,  to: 77, amount: "$10,500", fraud: true }, 
-    // Normal transaction
     { from: 64, to: 77, amount: "$200", fraud: false },
   ];
 
-  // Dynamic Reports Dictionary
-  const reports: Record<number, AnalysisReport> = {
-    77: {
-      score: "1.00",
-      reason: "Cyclic topology detected in 2-hop neighborhood",
-      agentText: "**Topological Anomaly Detected:** User 77 is the potential originator of a closed flow loop involving Users 81, 87, 82, and 9. Funds travel sequentially and return to User 77 ($10,500), indicating a layering attempt. Status: ANOMALOUS."
-    },
-    81: {
-      score: "0.98",
-      reason: "High-value intermediary in cyclic flow",
-      agentText: "**Money Mule Indicator:** User 81 received $12,000 and immediately transferred $11,500 to User 87. Retention rate is <5%, which is consistent with mule account behavior."
-    },
-    87: {
-      score: "0.98",
-      reason: "Rapid fund pass-through detected",
-      agentText: "**Layering Node:** User 87 participates in the ring structure. Transaction timestamps show funds were held for less than 1 hour before moving to User 82."
-    },
-    82: {
-      score: "0.99",
-      reason: "Cyclic topology (Rank 2 Suspicion)",
-      agentText: "**Active Fraud Participant:** User 82 acts as the fourth hop in the detected ring. Connected strongly to User 87 (In) and User 9 (Out)."
-    },
-    9: {
-      score: "0.97",
-      reason: "Loop closer node",
-      agentText: "**Cycle Completion:** User 9 is responsible for returning the layered funds back to the source (User 77). This completes the 'Round Tripping' pattern."
-    },
-    64: {
-      score: "0.02",
-      reason: "Normal transaction behavior",
-      agentText: "**Safe User:** User 64 has a single low-value payment ($200) to User 77. No connection to the fraud ring's internal cycle. Status: NORMAL."
+  // Function to call the Python API
+  const handleNodeClick = async (nodeId: number) => {
+    if (selectedNode === nodeId) return; // Don't reload if already selected
+    
+    setSelectedNode(nodeId);
+    setLoading(true);
+    setActiveReport(null); // Clear previous report
+
+    try {
+      // FETCH FROM YOUR PYTHON API
+      const response = await fetch(`http://localhost:8000/analyze/${nodeId}`);
+      if (!response.ok) throw new Error("API Connection Failed");
+      
+      const data = await response.json();
+      setActiveReport(data);
+      
+    } catch (error) {
+      console.error("Failed to fetch analysis:", error);
+      // Fallback for demo if API is offline
+      setActiveReport({
+        score: "Error",
+        is_fraud: false,
+        reason: "API Unavailable",
+        agent_report: "Could not connect to Python backend. Make sure 'uvicorn api:app' is running."
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const activeReport = selectedNode ? reports[selectedNode] : null;
   const activeNode = nodes.find(n => n.id === selectedNode);
 
   return (
@@ -75,10 +72,10 @@ export const GraphDemo = () => {
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-3xl font-bold mb-4 text-center text-foreground">
-            Interactive Detection Example
+            Live AI Detection
           </h2>
           <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-            Click on a node to see how the system identifies and explains fraud patterns
+            Click a node to trigger a real-time request to the Python/Llama3 Agent
           </p>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -86,12 +83,9 @@ export const GraphDemo = () => {
             <Card className="p-6 bg-card">
               <h3 className="font-semibold mb-4 text-card-foreground">Transaction Network</h3>
               <svg className="w-full h-80 border border-border rounded-lg bg-background" viewBox="0 0 600 400">
-                {/* Render edges first */}
                 {edges.map((edge, idx) => {
                   const fromNode = nodes.find(n => n.id === edge.from);
                   const toNode = nodes.find(n => n.id === edge.to);
-                  
-                  // SAFETY CHECK: Skip edges with missing nodes
                   if (!fromNode || !toNode) return null;
 
                   return (
@@ -119,11 +113,10 @@ export const GraphDemo = () => {
                   );
                 })}
                 
-                {/* Render nodes */}
                 {nodes.map((node) => (
                   <g
                     key={node.id}
-                    onClick={() => setSelectedNode(node.id)}
+                    onClick={() => handleNodeClick(node.id)}
                     className="cursor-pointer"
                   >
                     <circle
@@ -148,40 +141,38 @@ export const GraphDemo = () => {
                   </g>
                 ))}
               </svg>
-              <div className="mt-4 flex gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-graph-safe" />
-                  <span className="text-muted-foreground">Normal User</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-graph-fraud" />
-                  <span className="text-muted-foreground">Flagged User</span>
-                </div>
-              </div>
             </Card>
             
-            {/* RIGHT COLUMN: THE ANALYSIS REPORT */}
+            {/* RIGHT COLUMN: REAL-TIME API RESULTS */}
             <Card className="p-6 bg-card">
-              <h3 className="font-semibold mb-4 text-card-foreground">Analysis Result</h3>
-              {selectedNode === null ? (
+              <h3 className="font-semibold mb-4 text-card-foreground">
+                AI Agent Analysis {selectedNode && `(User ${selectedNode})`}
+              </h3>
+              
+              {!selectedNode ? (
                 <div className="flex items-center justify-center h-80 text-muted-foreground">
-                  Select a node to see analysis
+                  Select a node to query the Python Backend
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Header */}
+              ) : loading ? (
+                <div className="flex flex-col items-center justify-center h-80 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                  <p>Running GraphRAG Analysis...</p>
+                  <p className="text-xs text-muted-foreground mt-2">(Querying Llama3 Model)</p>
+                </div>
+              ) : activeReport ? (
+                <div className="space-y-4 animate-in fade-in duration-500">
                   <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
-                    {activeNode?.fraud ? (
+                    {activeReport.is_fraud ? (
                       <AlertCircle className="h-6 w-6 text-graph-fraud flex-shrink-0 mt-0.5" />
                     ) : (
                       <CheckCircle className="h-6 w-6 text-graph-safe flex-shrink-0 mt-0.5" />
                     )}
                     <div>
                       <p className="font-semibold mb-1 text-card-foreground">
-                        {activeNode?.label || `User ${selectedNode}`}
+                        User {selectedNode}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {activeNode?.fraud 
+                        {activeReport.is_fraud 
                           ? "⚠️ High fraud probability detected"
                           : "✓ No suspicious activity detected"
                         }
@@ -189,42 +180,31 @@ export const GraphDemo = () => {
                     </div>
                   </div>
                   
-                  {/* Report Details */}
-                  {activeReport ? (
-                    <div className="space-y-3">
-                      <div className="p-4 rounded-lg border border-border bg-background">
-                        <p className="font-medium mb-2 text-foreground">GNN Detection</p>
-                        <p className="text-sm text-muted-foreground">
-                          Fraud probability: <span className={`font-semibold ${activeNode?.fraud ? "text-graph-fraud" : "text-graph-safe"}`}>
-                            {activeReport.score}
-                          </span>
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Reason: {activeReport.reason}
-                        </p>
-                      </div>
-                      
-                      <div className="p-4 rounded-lg border border-accent/20 bg-accent/5">
-                        <p className="font-medium mb-2 text-foreground flex items-center gap-2">
-                          <span>🤖</span> Agent Report
-                        </p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {activeReport.agentText}
-                        </p>
-                      </div>
-                      
-                      <Button size="sm" variant="outline" className="w-full">
-                        Download Compliance PDF
-                      </Button>
-                    </div>
-                  ) : (
+                  <div className="space-y-3">
                     <div className="p-4 rounded-lg border border-border bg-background">
+                      <p className="font-medium mb-2 text-foreground">GNN Detection</p>
                       <p className="text-sm text-muted-foreground">
-                        No detailed report available for this node.
+                        Score: <span className={`font-semibold ${activeReport.is_fraud ? "text-graph-fraud" : "text-graph-safe"}`}>
+                          {activeReport.score}
+                        </span>
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Reason: {activeReport.reason}
                       </p>
                     </div>
-                  )}
+                    
+                    <div className="p-4 rounded-lg border border-accent/20 bg-accent/5">
+                      <p className="font-medium mb-2 text-foreground flex items-center gap-2">
+                        <span>🤖</span> Live Agent Report
+                      </p>
+                      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                        {activeReport.agent_report}
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              ) : (
+                <div className="p-4 text-red-500">Error loading data.</div>
               )}
             </Card>
           </div>

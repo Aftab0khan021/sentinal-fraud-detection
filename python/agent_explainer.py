@@ -22,7 +22,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # We only need Ollama, no complex Agent classes needed anymore
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 class GraphQueryTool:
     """Helper class to extract graph data."""
@@ -102,7 +102,7 @@ class FraudExplainerAgent:
         print("⚠️  Make sure Ollama is running: 'ollama serve'")
         
         # Temperature 0.1 makes it very factual and less likely to hallucinate
-        self.llm = Ollama(model=model, temperature=0.1)
+        self.llm = OllamaLLM(model=model, temperature=0.1)
 
     def explain(self, user_id: int) -> str:
         # 1. GATHER DATA (Python does this reliably)
