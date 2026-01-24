@@ -1,0 +1,8 @@
+{
+  "hidden_channels": 128,
+  "dropout": 0.14955239570328405,
+  "lr": 0.03281192549162401,
+  "weight_decay": 0.00010913544201542101,
+  "num_layers": 2,
+  "best_val_accuracy": 1.0
+}

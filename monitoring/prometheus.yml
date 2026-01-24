@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'sentinal-production'
+    environment: 'production'
+
+# Load alert rules
+rule_files:
+  - 'alert_rules.yml'
+
+# AlertManager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # SentinAL API instances
+  - job_name: 'sentinal-api'
+    scrape_interval: 5s
+    static_configs:
+      - targets: 
+          - 'api-1:8000'
+          - 'api-2:8000'
+          - 'api-3:8000'
+        labels:
+          service: 'api'
+  
+  # Redis instances
+  - job_name: 'redis'
+    static_configs:
+      - targets:
+          - 'redis-master:6379'
+          - 'redis-replica-1:6379'
+          - 'redis-replica-2:6379'
+        labels:
+          service: 'redis'
+  
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+  
+  # Jaeger
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+  
+  # AlertManager
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']

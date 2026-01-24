@@ -21,8 +21,66 @@ import warnings
 # Suppress warnings to keep output clean
 warnings.filterwarnings("ignore")
 
+# Import cache manager for distributed caching
+from cache_manager import get_cache_manager
+
 # We only need Ollama, no complex Agent classes needed anymore
 from langchain_ollama import OllamaLLM
+import random
+
+class PromptManager:
+    """Manages A/B testing of prompts."""
+    
+    PROMPTS = {
+        "A_concise": """
+Input Data:
+{profile}
+
+Topology:
+{topology}
+
+Instruction:
+Summarize fraud risk concisely (under 4 sentences).
+1. State "Model Fraud Probability".
+2. Flag "Loops/Cycles" as money laundering.
+3. Be direct.
+
+Response:
+""",
+        "B_detailed": """
+Analyze the following user for financial fraud compliance.
+
+USER PROFILE:
+{profile}
+
+TRANSACTION GRAPH:
+{topology}
+
+ANALYSIS REQUIRED:
+- Evaluate the risk score provided by the GNN model.
+- Investigate the transaction topology for patterns (Cycles, High Fan-out).
+- Provide a detailed reasoning for the risk assessment.
+
+OUTPUT FORMAT:
+Generate a professional compliance report (max 5 sentences).
+"""
+    }
+
+    def __init__(self):
+        self.stats = {k: {"count": 0} for k in self.PROMPTS.keys()}
+
+    def get_prompt(self, profile, topology):
+        # Simple A/B test: Random selection
+        # Weighted choice can be added here
+        prompt_id = random.choice(list(self.PROMPTS.keys()))
+        self.stats[prompt_id]["count"] += 1
+        
+        template = self.PROMPTS[prompt_id]
+        return prompt_id, template.format(profile=profile, topology=topology)
+
+    def log_feedback(self, prompt_id, useful=True):
+        # Placeholder for reinforcement learning
+        pass
 
 class GraphQueryTool:
     """Helper class to extract graph data."""
@@ -103,8 +161,41 @@ class FraudExplainerAgent:
         
         # Temperature 0.1 makes it very factual and less likely to hallucinate
         self.llm = OllamaLLM(model=model, temperature=0.1)
+        self.prompt_manager = PromptManager()
 
     def explain(self, user_id: int) -> str:
+        """
+        Generate fraud explanation with Redis caching.
+        
+        Args:
+            user_id: User ID to explain
+            
+        Returns:
+            Fraud explanation text
+        """
+        # Check cache first
+        cache_manager = get_cache_manager()
+        cache_key = f"fraud_explanation:{user_id}"
+        
+        cached_explanation = cache_manager.get(cache_key)
+        if cached_explanation:
+            print(f"  > [Cache HIT] Retrieved explanation for User {user_id}")
+            return cached_explanation
+        
+        print(f"  > [Cache MISS] Generating new explanation for User {user_id}")
+        
+        # Generate new explanation
+        explanation = self._generate_explanation(user_id)
+        
+        # Store in cache with 1 hour TTL
+        cache_manager.set(cache_key, explanation, ttl=3600)
+        
+        return explanation
+
+    def _generate_explanation(self, user_id: int) -> str:
+        """
+        Internal method to generate explanation (not cached directly).
+        """
         # 1. GATHER DATA (Python does this reliably)
         print(f"  > [System] Fetching profile for Node {user_id}...")
         profile = self.tool.get_user_info(user_id)
@@ -113,47 +204,36 @@ class FraudExplainerAgent:
         topology = self.tool.get_k_hop_subgraph(user_id)
         
         # 2. CONSTRUCT PROMPT (UPDATED FIX)
-        # We removed the complex roleplay instruction that was confusing the AI.
-        # This direct format works much better with Llama 3.2 1B.
-        prompt = f"""
-Input Data:
-{profile}
-
-Topology:
-{topology}
-
-Instruction:
-Based on the data above, summarize the fraud risk for this user.
-1. Mention the "Model Fraud Probability" score.
-2. If there are "Loops" or "Cycles" listed, identify them as suspicious money layering.
-3. Keep the response professional, factual, and under 4 sentences.
-
-Response:
-"""
+        # Using A/B Testing Manager
+        prompt_id, prompt = self.prompt_manager.get_prompt(profile, topology)
+        print(f"  > [A/B Testing] Using Prompt: {prompt_id}")
+        
         # 3. GENERATE (LLM just summarizes)
         try:
             print("  > [AI] Generating summary report...")
-            return self.llm.invoke(prompt)
+            response = self.llm.invoke(prompt)
+            print("  > [Cache] Storing result")
+            return response
         except Exception as e:
             return f"Error connecting to Ollama: {str(e)}"
 
 def load_data():
     print("\nLoading data...")
     try:
-        with open('data/graph.pkl', 'rb') as f:
+        with open('data/graph_enhanced.pkl', 'rb') as f:
             graph = pickle.load(f)
         print(f"✓ Loaded graph with {graph.number_of_nodes()} nodes")
     except FileNotFoundError:
-        print("❌ Error: data/graph.pkl not found. Run data_gen.py first.")
-        exit(1)
+        print("❌ Error: data/graph_enhanced.pkl not found. Run data_gen_enhanced.py first.")
+        raise FileNotFoundError("data/graph_enhanced.pkl not found")
     
     try:
-        with open('reports/fraud_scores.json', 'r') as f:
+        with open('reports/fraud_scores_improved.json', 'r') as f:
             fraud_scores = json.load(f)
         print(f"✓ Loaded fraud scores")
     except FileNotFoundError:
-        print("❌ Error: reports/fraud_scores.json not found. Run gnn_train.py first.")
-        exit(1)
+        print("❌ Error: reports/fraud_scores_improved.json not found. Run gnn_train_improved.py first.")
+        raise FileNotFoundError("reports/fraud_scores_improved.json not found")
     
     return graph, fraud_scores
 

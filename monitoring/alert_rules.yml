@@ -1,0 +1,179 @@
+groups:
+  - name: sentinal_api_alerts
+    interval: 30s
+    rules:
+      # API Availability Alerts
+      - alert: APIDown
+        expr: up{job="sentinal-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "SentinAL API is down"
+          description: "API instance {{ $labels.instance }} has been down for more than 1 minute"
+          runbook_url: "https://docs.sentinal.ai/runbooks/api-down"
+
+      - alert: APIHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High API error rate detected"
+          description: "API error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+          runbook_url: "https://docs.sentinal.ai/runbooks/high-error-rate"
+
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "API latency is high"
+          description: "95th percentile latency is {{ $value }}s (threshold: 2s)"
+          runbook_url: "https://docs.sentinal.ai/runbooks/high-latency"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is unreachable"
+          runbook_url: "https://docs.sentinal.ai/runbooks/redis-down"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis memory usage is {{ $value | humanizePercentage }} (threshold: 90%)"
+
+      - alert: RedisSentinelDown
+        expr: redis_sentinel_masters < 1
+        for: 1m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis Sentinel has no master"
+          description: "Redis Sentinel cannot find a master instance"
+          runbook_url: "https://docs.sentinal.ai/runbooks/redis-sentinel-failover"
+
+      # Fraud Detection Alerts
+      - alert: FraudDetectionAccuracyDrop
+        expr: fraud_detection_accuracy < 0.85
+        for: 15m
+        labels:
+          severity: warning
+          component: model
+        annotations:
+          summary: "Fraud detection accuracy dropped"
+          description: "Model accuracy is {{ $value | humanizePercentage }} (threshold: 85%)"
+          runbook_url: "https://docs.sentinal.ai/runbooks/model-accuracy-drop"
+
+      - alert: HighFraudRate
+        expr: rate(fraud_detections_total{is_fraud="true"}[1h]) > 0.3
+        for: 30m
+        labels:
+          severity: warning
+          component: model
+        annotations:
+          summary: "Unusually high fraud rate detected"
+          description: "Fraud rate is {{ $value | humanizePercentage }} (threshold: 30%)"
+
+      # Resource Alerts
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      # Load Balancer Alerts
+      - alert: LoadBalancerBackendDown
+        expr: count(up{job="sentinal-api"} == 1) < 2
+        for: 2m
+        labels:
+          severity: warning
+          component: loadbalancer
+        annotations:
+          summary: "Load balancer has insufficient healthy backends"
+          description: "Only {{ $value }} API instances are healthy (minimum: 2)"
+
+      - alert: LoadBalancerAllBackendsDown
+        expr: count(up{job="sentinal-api"} == 1) == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: loadbalancer
+        annotations:
+          summary: "All load balancer backends are down"
+          description: "No healthy API instances available"
+          runbook_url: "https://docs.sentinal.ai/runbooks/all-backends-down"
+
+      # Authentication Alerts
+      - alert: HighAuthenticationFailureRate
+        expr: rate(auth_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate is {{ $value }} per second (threshold: 10/s)"
+
+      - alert: SuspiciousBruteForceAttempt
+        expr: rate(auth_failures_total{reason="invalid_credentials"}[1m]) > 50
+        for: 1m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Possible brute force attack detected"
+          description: "{{ $value }} failed login attempts per second from {{ $labels.ip }}"
+          runbook_url: "https://docs.sentinal.ai/runbooks/brute-force-attack"
+
+      # Cache Alerts
+      - alert: LowCacheHitRate
+        expr: rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+          component: cache
+        annotations:
+          summary: "Cache hit rate is low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 50%)"
+
+      # Jaeger/Tracing Alerts
+      - alert: JaegerDown
+        expr: up{job="jaeger"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "Jaeger tracing service is down"
+          description: "Distributed tracing is unavailable"

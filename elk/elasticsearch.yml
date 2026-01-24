@@ -1,0 +1,31 @@
+# Elasticsearch Configuration for SentinAL
+
+cluster.name: "sentinal-logs"
+node.name: "sentinal-es-node-1"
+
+# Network settings
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Discovery settings (single node for development)
+discovery.type: single-node
+
+# Memory settings
+bootstrap.memory_lock: false
+
+# Index settings
+action.auto_create_index: true
+
+# Security settings (disable for development, enable in production)
+xpack.security.enabled: false
+xpack.security.enrollment.enabled: false
+
+# Monitoring
+xpack.monitoring.collection.enabled: true
+
+# Index lifecycle management
+xpack.ilm.enabled: true
+
+# Snapshot repository
+path.repo: ["/usr/share/elasticsearch/backups"]
