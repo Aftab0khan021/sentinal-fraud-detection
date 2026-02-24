@@ -216,7 +216,7 @@ async def startup_event():
     # Initialize distributed tracing
     try:
         logger.info("Initializing distributed tracing...")
-        init_tracing(app, service_name="sentinal-api", service_version="2.0.0")
+        init_tracing(app, service_name="sentinal-api", service_version=VERSION)  # was hardcoded "2.0.0"
     except Exception as e:
         logger.warning(f"Failed to initialize tracing: {e}")
     
@@ -275,7 +275,7 @@ async def root():
     """Root endpoint - API information"""
     return {
         "name": "SentinAL Fraud Detection API",
-        "version": "2.0.0",
+        "version": VERSION,  # was hardcoded "2.0.0"
         "status": "operational",
         "documentation": "/docs" if ENVIRONMENT == "development" else "Contact administrator",
         "security": "JWT authentication required"
@@ -328,7 +328,7 @@ async def readiness_check():
     if all_ready:
         return {
             "status": "ready",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),  # was naive datetime
             "checks": checks,
             "instance_id": os.getenv("INSTANCE_ID", "unknown")
         }
@@ -346,7 +346,7 @@ async def liveness_check():
     """
     return {
         "status": "alive",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),  # was naive datetime
         "instance_id": os.getenv("INSTANCE_ID", "unknown"),
         "uptime_seconds": time.time() - app.state.start_time if hasattr(app.state, "start_time") else 0
     }
@@ -410,19 +410,18 @@ async def login(request: Request, credentials: auth_models.LoginRequest):
 
 @app.post("/api/auth/refresh", tags=["Authentication"])
 @limiter.limit(f"{RATE_LIMIT}/minute")
-async def refresh_token_endpoint(request: Request, refresh_token: str):
+async def refresh_token_endpoint(request: Request, body: auth_models.RefreshRequest):
     """
     Refresh access token using refresh token.
-    
-    Args:
-        refresh_token: Valid refresh token
-        
+
+    Accepts a JSON body: {"refresh_token": "<token>"}
+
     Returns:
         New access token and refresh token
     """
     try:
-        # Verify refresh token
-        user_id = verify_refresh_token(refresh_token)
+        # Verify refresh token (body.refresh_token from JSON body)
+        user_id = verify_refresh_token(body.refresh_token)
         
         # Create new tokens
         access_token = create_access_token(data={"sub": user_id})

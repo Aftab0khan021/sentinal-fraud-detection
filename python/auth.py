@@ -94,14 +94,22 @@ def verify_token(credentials: HTTPAuthorizationCredentials) -> str:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
-        
+
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
+        # Check if this access token has been explicitly revoked (logout)
+        if _is_token_blacklisted(token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         return user_id
         
     except jwt.ExpiredSignatureError:
