@@ -20,25 +20,37 @@ import os
 import hmac
 import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 # Constants
 LOG_DIR = Path("logs/audit")
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default-secret-key-change-in-prod").encode()
+# HMAC key for audit log integrity — sourced from env var (same JWT secret)
+# Warns loudly if using insecure default (same guard as api.py / auth.py)
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION").encode()
+if os.getenv("JWT_SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION") == "CHANGE_THIS_IN_PRODUCTION":
+    import warnings
+
+    warnings.warn(
+        "audit_logger: Using default HMAC signing key! Audit log integrity is NOT guaranteed. "
+        "Set JWT_SECRET_KEY in your .env file.",
+        UserWarning,
+        stacklevel=2,
+    )
+
 
 class AuditLogger:
     def __init__(self):
         self._setup_logger()
-    
+
     def _setup_logger(self):
         """Initialize the audit logger with file rotation"""
         LOG_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         self.logger = logging.getLogger("audit_logger")
         self.logger.setLevel(logging.INFO)
-        
+
         # Use a separate file handler for audit logs
         # Rotates at midnight
         handler = logging.handlers.TimedRotatingFileHandler(
@@ -46,13 +58,13 @@ class AuditLogger:
             when="midnight",
             interval=1,
             backupCount=90,  # Keep 90 days of logs (Compliance)
-            encoding="utf-8"
+            encoding="utf-8",
         )
-        
-        formatter = logging.Formatter('%(message)s')
+
+        formatter = logging.Formatter("%(message)s")
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-        
+
     def _sign_entry(self, entry: Dict[str, Any]) -> str:
         """Generate HMAC-SHA256 signature for the log entry"""
         # Sort keys to ensure consistent signature
@@ -60,15 +72,17 @@ class AuditLogger:
         signature = hmac.new(SECRET_KEY, serialized, hashlib.sha256).hexdigest()
         return signature
 
-    def log_event(self, 
-                  event_type: str, 
-                  user_id: Optional[str] = None, 
-                  action: str = "", 
-                  details: Dict[str, Any] = None,
-                  status: str = "SUCCESS"):
+    def log_event(
+        self,
+        event_type: str,
+        user_id: Optional[str] = None,
+        action: str = "",
+        details: Dict[str, Any] = None,
+        status: str = "SUCCESS",
+    ):
         """
         Log a security or compliance event.
-        
+
         args:
             event_type: Category (e.g., 'AUTH', 'FRAUD_ANALYSIS', 'DATA_ACCESS')
             user_id: ID of the user performing the action (or subject)
@@ -78,9 +92,9 @@ class AuditLogger:
         """
         if details is None:
             details = {}
-            
-        timestamp = datetime.utcnow().isoformat() + "Z"
-        
+
+        timestamp = datetime.now(timezone.utc).isoformat()  # was deprecated utcnow()
+
         log_entry = {
             "version": "1.0",
             "timestamp": timestamp,
@@ -89,17 +103,19 @@ class AuditLogger:
             "action": action,
             "status": status,
             "details": details,
-            "environment": os.getenv("ENVIRONMENT", "development")
+            "environment": os.getenv("ENVIRONMENT", "development"),
         }
-        
+
         # Add signature
         log_entry["signature"] = self._sign_entry(log_entry)
-        
+
         # Write structured log
         self.logger.info(json.dumps(log_entry))
 
+
 # Global instance
 audit_logger = AuditLogger()
+
 
 def log_audit_event(event_type: str, **kwargs):
     """Helper function to log events easily"""

@@ -16,40 +16,34 @@ from auth import create_access_token
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Generate JWT token for SentinAL API testing'
-    )
+    parser = argparse.ArgumentParser(description="Generate JWT token for SentinAL API testing")
     parser.add_argument(
-        '--user',
+        "--user",
         type=str,
-        default='test_user',
-        help='User ID to encode in token (default: test_user)'
+        default="test_user",
+        help="User ID to encode in token (default: test_user)",
     )
     parser.add_argument(
-        '--expires',
-        type=int,
-        default=30,
-        help='Token expiration time in minutes (default: 30)'
+        "--expires", type=int, default=30, help="Token expiration time in minutes (default: 30)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Generate token
     token = create_access_token(
-        data={"sub": args.user},
-        expires_delta=timedelta(minutes=args.expires)
+        data={"sub": args.user}, expires_delta=timedelta(minutes=args.expires)
     )
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("JWT TOKEN GENERATED")
-    print("="*70)
+    print("=" * 70)
     print(f"\nUser ID: {args.user}")
     print(f"Expires in: {args.expires} minutes")
     print(f"\nToken:\n{token}")
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("\nUsage:")
     print(f'curl -H "Authorization: Bearer {token}" http://localhost:8000/analyze/77')
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":

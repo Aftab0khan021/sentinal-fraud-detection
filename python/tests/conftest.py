@@ -29,18 +29,14 @@ def client():
 @pytest.fixture
 def valid_token():
     """Generate a valid JWT token for testing"""
-    return create_access_token(
-        data={"sub": "test_user"},
-        expires_delta=timedelta(minutes=30)
-    )
+    return create_access_token(data={"sub": "test_user"}, expires_delta=timedelta(minutes=30))
 
 
 @pytest.fixture
 def expired_token():
     """Generate an expired JWT token for testing"""
     return create_access_token(
-        data={"sub": "test_user"},
-        expires_delta=timedelta(minutes=-1)  # Already expired
+        data={"sub": "test_user"}, expires_delta=timedelta(minutes=-1)  # Already expired
     )
 
 
@@ -54,7 +50,7 @@ def auth_headers(valid_token):
 def mock_fraud_scores():
     """Mock fraud scores data"""
     return {
-        'fraud_probability': [0.1] * 50 + [0.9] * 50,  # 50 normal, 50 fraud
-        'true_label': [0] * 50 + [1] * 50,
-        'predicted_label': [0] * 50 + [1] * 50
+        "fraud_probability": [0.1] * 50 + [0.9] * 50,  # 50 normal, 50 fraud
+        "true_label": [0] * 50 + [1] * 50,
+        "predicted_label": [0] * 50 + [1] * 50,
     }

@@ -46,10 +46,10 @@ def test_analyze_with_invalid_token(client):
 def test_analyze_with_valid_token(client, auth_headers):
     """Test analyze endpoint with valid authentication"""
     response = client.get("/analyze/77", headers=auth_headers)
-    
+
     # May be 200 (success) or 503 (if AI not loaded in test)
     assert response.status_code in [200, 503]
-    
+
     data = response.json()
     assert "error" in data
 
@@ -59,7 +59,7 @@ def test_analyze_invalid_user_id(client, auth_headers):
     # Test out of range
     response = client.get("/analyze/999", headers=auth_headers)
     assert response.status_code in [400, 404]  # Bad Request or Not Found
-    
+
     # Test negative
     response = client.get("/analyze/-1", headers=auth_headers)
     assert response.status_code == 400
@@ -73,7 +73,7 @@ def test_rate_limiting(client, auth_headers):
         response = client.get("/analyze/77", headers=auth_headers)
         responses.append(response.status_code)
         time.sleep(0.1)  # Small delay between requests
-    
+
     # At least one should be rate limited (429)
     # Note: This test may be flaky depending on timing
     assert 429 in responses or all(r in [200, 503] for r in responses)
@@ -88,7 +88,7 @@ def test_cors_headers(client):
 def test_security_headers(client):
     """Test security headers are present"""
     response = client.get("/health")
-    
+
     # Check for security headers
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
@@ -98,7 +98,7 @@ def test_validation_error_format(client, auth_headers):
     """Test that validation errors return proper format"""
     response = client.get("/analyze/abc", headers=auth_headers)
     assert response.status_code == 422  # Unprocessable Entity (FastAPI validation)
-    
+
     data = response.json()
     assert "detail" in data
 

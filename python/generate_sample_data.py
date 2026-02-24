@@ -22,15 +22,12 @@ for _ in range(200):
         G.add_edge(src, dst, amount=amount)
 
 # Create fraud scores array
-fraud_scores = np.array([G.nodes[i]['fraud_score'] for i in range(100)])
+fraud_scores = np.array([G.nodes[i]["fraud_score"] for i in range(100)])
 
 # Save data
-data = {
-    'graph': G,
-    'fraud_scores': fraud_scores
-}
+data = {"graph": G, "fraud_scores": fraud_scores}
 
-with open('data/graph_enhanced.pkl', 'wb') as f:
+with open("data/graph_enhanced.pkl", "wb") as f:
     pickle.dump(data, f)
 
 print("✓ Sample graph data generated successfully!")

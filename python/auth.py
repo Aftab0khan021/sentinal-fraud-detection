@@ -39,6 +39,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Falls back to in-memory if Redis is unavailable
 try:
     from cache_manager import get_cache_manager as _get_cache_manager
+
     _cache_for_blacklist = _get_cache_manager()
 except Exception:
     _cache_for_blacklist = None
@@ -47,43 +48,43 @@ except Exception:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
     Create a JWT access token.
-    
+
     Args:
         data: Dictionary containing claims to encode in the token
         expires_delta: Optional custom expiration time
-        
+
     Returns:
         Encoded JWT token string
-        
+
     Example:
         >>> token = create_access_token({"sub": "user123"})
     """
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta  # Bug #23: utcnow() deprecated
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+
     return encoded_jwt
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials) -> str:
     """
     Verify JWT token from Authorization header.
-    
+
     Args:
         credentials: HTTP Bearer credentials containing the token
-        
+
     Returns:
         User ID (subject) from the token
-        
+
     Raises:
         HTTPException: If token is invalid, expired, or missing
-        
+
     Example:
         Use as FastAPI dependency:
         >>> @app.get("/protected")
@@ -111,7 +112,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials) -> str:
             )
 
         return user_id
-        
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -129,13 +130,13 @@ def verify_token(credentials: HTTPAuthorizationCredentials) -> str:
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """
     FastAPI dependency to get current authenticated user.
-    
+
     Args:
         credentials: Automatically injected by FastAPI from Authorization header
-        
+
     Returns:
         User ID string
-        
+
     Example:
         >>> from fastapi import Depends
         >>> @app.get("/me")
@@ -148,10 +149,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 def create_refresh_token(data: dict) -> str:
     """
     Create a JWT refresh token with longer expiration.
-    
+
     Args:
         data: Dictionary containing claims to encode in the token
-        
+
     Returns:
         Encoded JWT refresh token string
     """
@@ -165,50 +166,45 @@ def create_refresh_token(data: dict) -> str:
 def verify_refresh_token(token: str) -> str:
     """
     Verify a refresh token and return the user ID.
-    
+
     Args:
         token: Refresh token string
-        
+
     Returns:
         User ID from the token
-        
+
     Raises:
         HTTPException: If token is invalid or expired
     """
     try:
         payload = jwt.decode(token, REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
-        
+
         if payload.get("type") != "refresh":
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token type"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type"
             )
-        
+
         user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
             )
-        
+
         # Check if token is blacklisted (Bug #9: checks Redis-backed blacklist)
         if _is_token_blacklisted(token):
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked"
             )
-        
+
         return user_id
-        
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token has expired"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token has expired"
         )
     except jwt.PyJWTError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate refresh token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate refresh token"
         )
 
 
@@ -221,6 +217,7 @@ def _is_token_blacklisted(token: str) -> bool:
     if _cache_for_blacklist:
         try:
             import hashlib
+
             key = f"blacklist:{hashlib.sha256(token.encode()).hexdigest()}"
             return _cache_for_blacklist.get(key) is not None
         except Exception:
@@ -240,6 +237,7 @@ def blacklist_token(token: str):
     if _cache_for_blacklist:
         try:
             import hashlib
+
             key = f"blacklist:{hashlib.sha256(token.encode()).hexdigest()}"
             # TTL = refresh token max lifetime so key auto-expires
             ttl = REFRESH_TOKEN_EXPIRE_DAYS * 86400
@@ -254,11 +252,11 @@ def blacklist_token(token: str):
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a password against its hash.
-    
+
     Args:
         plain_password: Plain text password
         hashed_password: Hashed password from database
-        
+
     Returns:
         True if password matches, False otherwise
     """
@@ -268,10 +266,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """
     Hash a password for storing.
-    
+
     Args:
         password: Plain text password
-        
+
     Returns:
         Hashed password
     """
@@ -298,11 +296,11 @@ DEMO_USERS = {
 def authenticate_user(email: str, password: str) -> Optional[dict]:
     """
     Authenticate a user by email and password.
-    
+
     Args:
         email: User email
         password: Plain text password
-        
+
     Returns:
         User dict if authentication successful, None otherwise
     """
@@ -317,16 +315,18 @@ def authenticate_user(email: str, password: str) -> Optional[dict]:
 # Warn if using default secret keys
 if SECRET_KEY == "CHANGE_THIS_IN_PRODUCTION":
     import warnings
+
     warnings.warn(
         "Using default JWT_SECRET_KEY! This is INSECURE. "
         "Set JWT_SECRET_KEY in your .env file before deploying to production.",
-        UserWarning
+        UserWarning,
     )
 
 if REFRESH_SECRET_KEY == "CHANGE_THIS_REFRESH_KEY_IN_PRODUCTION":
     import warnings
+
     warnings.warn(
         "Using default JWT_REFRESH_SECRET_KEY! This is INSECURE. "
         "Set JWT_REFRESH_SECRET_KEY in your .env file before deploying to production.",
-        UserWarning
+        UserWarning,
     )

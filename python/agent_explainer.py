@@ -28,9 +28,10 @@ from cache_manager import get_cache_manager
 from langchain_ollama import OllamaLLM
 import random
 
+
 class PromptManager:
     """Manages A/B testing of prompts."""
-    
+
     PROMPTS = {
         "A_concise": """
 Input Data:
@@ -63,7 +64,7 @@ ANALYSIS REQUIRED:
 
 OUTPUT FORMAT:
 Generate a professional compliance report (max 5 sentences).
-"""
+""",
     }
 
     def __init__(self):
@@ -74,7 +75,7 @@ Generate a professional compliance report (max 5 sentences).
         # Weighted choice can be added here
         prompt_id = random.choice(list(self.PROMPTS.keys()))
         self.stats[prompt_id]["count"] += 1
-        
+
         template = self.PROMPTS[prompt_id]
         return prompt_id, template.format(profile=profile, topology=topology)
 
@@ -82,23 +83,24 @@ Generate a professional compliance report (max 5 sentences).
         # Placeholder for reinforcement learning
         pass
 
+
 class GraphQueryTool:
     """Helper class to extract graph data."""
-    
+
     def __init__(self, graph: nx.DiGraph, fraud_scores: Dict):
         self.graph = graph
         self.fraud_scores = fraud_scores
-    
+
     def get_user_info(self, user_id: int) -> str:
         if user_id not in self.graph.nodes():
             return f"User {user_id} not found in graph."
-        
+
         node_data = self.graph.nodes[user_id]
         try:
-            fraud_prob = self.fraud_scores['fraud_probability'][user_id]
+            fraud_prob = self.fraud_scores["fraud_probability"][user_id]
         except:
             fraud_prob = 0.0
-        
+
         return f"""
 [NODE PROFILE]
 ID: {user_id}
@@ -111,7 +113,7 @@ Status: {'FLAGGED' if node_data.get('is_fraud', 0) == 1 else 'Normal'}
     def get_k_hop_subgraph(self, user_id: int, k: int = 2) -> str:
         if user_id not in self.graph.nodes():
             return ""
-        
+
         # Get neighbors (k-hops)
         neighbors = set([user_id])
         current_layer = {user_id}
@@ -122,17 +124,17 @@ Status: {'FLAGGED' if node_data.get('is_fraud', 0) == 1 else 'Normal'}
                 next_layer.update(self.graph.predecessors(node))
             neighbors.update(next_layer)
             current_layer = next_layer
-        
+
         subgraph = self.graph.subgraph(neighbors)
-        
+
         output = [f"\n[TRANSACTION TOPOLOGY]"]
         output.append(f"Network Size: {len(neighbors)} related nodes")
         output.append("Recent Flows:")
-        
+
         for u, v, data in subgraph.edges(data=True):
-            amt = data.get('amount', 0)
+            amt = data.get("amount", 0)
             output.append(f"  Node {u} -> Node {v} | Amount: ${amt:.2f}")
-            
+
         # Detect cycles (Money Laundering Loops)
         try:
             cycles = list(nx.simple_cycles(subgraph))
@@ -144,22 +146,25 @@ Status: {'FLAGGED' if node_data.get('is_fraud', 0) == 1 else 'Normal'}
                     output.append(f"  Loop: {path} -> {cycle[0]}")
         except Exception as e:  # Bug #16: was bare `except: pass` — now logs the error
             import logging as _log
+
             _log.getLogger(__name__).warning(f"Cycle detection failed for subgraph: {e}")
-            
+
         return "\n".join(output)
+
 
 class FraudExplainerAgent:
     """
     Simplified Agent that gathers data first, then asks LLM to summarize.
     """
+
     def __init__(self, graph: nx.DiGraph, fraud_scores: Dict, model: str = "llama3"):
         self.graph = graph
         self.fraud_scores = fraud_scores
         self.tool = GraphQueryTool(graph, fraud_scores)
-        
+
         print(f"\nInitializing Ollama with model: {model}")
         print("⚠️  Make sure Ollama is running: 'ollama serve'")
-        
+
         # Temperature 0.1 makes it very factual and less likely to hallucinate
         self.llm = OllamaLLM(model=model, temperature=0.1)
         self.prompt_manager = PromptManager()
@@ -201,15 +206,15 @@ class FraudExplainerAgent:
         # 1. GATHER DATA (Python does this reliably)
         print(f"  > [System] Fetching profile for Node {user_id}...")
         profile = self.tool.get_user_info(user_id)
-        
+
         print(f"  > [System] Analyzing network topology...")
         topology = self.tool.get_k_hop_subgraph(user_id)
-        
+
         # 2. CONSTRUCT PROMPT (UPDATED FIX)
         # Using A/B Testing Manager
         prompt_id, prompt = self.prompt_manager.get_prompt(profile, topology)
         print(f"  > [A/B Testing] Using Prompt: {prompt_id}")
-        
+
         # 3. GENERATE (LLM just summarizes)
         try:
             print("  > [AI] Generating summary report...")
@@ -219,73 +224,78 @@ class FraudExplainerAgent:
         except Exception as e:
             return f"Error connecting to Ollama: {str(e)}"
 
+
 def load_data():
     print("\nLoading data...")
     try:
-        with open('data/graph_enhanced.pkl', 'rb') as f:
+        with open("data/graph_enhanced.pkl", "rb") as f:
             graph = pickle.load(f)
         print(f"✓ Loaded graph with {graph.number_of_nodes()} nodes")
     except FileNotFoundError:
         print("❌ Error: data/graph_enhanced.pkl not found. Run data_gen_enhanced.py first.")
         raise FileNotFoundError("data/graph_enhanced.pkl not found")
-    
+
     try:
-        with open('reports/fraud_scores_improved.json', 'r') as f:
+        with open("reports/fraud_scores_improved.json", "r") as f:
             fraud_scores = json.load(f)
         print(f"✓ Loaded fraud scores")
     except FileNotFoundError:
-        print("❌ Error: reports/fraud_scores_improved.json not found. Run gnn_train_improved.py first.")
+        print(
+            "❌ Error: reports/fraud_scores_improved.json not found. Run gnn_train_improved.py first."
+        )
         raise FileNotFoundError("reports/fraud_scores_improved.json not found")
-    
+
     return graph, fraud_scores
 
+
 def main():
-    parser = argparse.ArgumentParser(description='SentinAL Fraud Explainer Agent')
-    parser.add_argument('--user_id', type=int, help='User ID to explain')
-    parser.add_argument('--model', type=str, default='llama3.2:1b', 
-                       help='Ollama model to use')
-    parser.add_argument('--top_n', type=int, default=5)
-    
+    parser = argparse.ArgumentParser(description="SentinAL Fraud Explainer Agent")
+    parser.add_argument("--user_id", type=int, help="User ID to explain")
+    parser.add_argument("--model", type=str, default="llama3.2:1b", help="Ollama model to use")
+    parser.add_argument("--top_n", type=int, default=5)
+
     args = parser.parse_args()
-    
-    print("="*70)
+
+    print("=" * 70)
     print("SentinAL: GraphRAG Fraud Explainer")
-    print("="*70)
-    
+    print("=" * 70)
+
     graph, fraud_scores = load_data()
     agent = FraudExplainerAgent(graph, fraud_scores, model=args.model)
-    
+
     if args.user_id is not None:
         print(f"\n{'='*70}")
         print(f"EXPLAINING USER {args.user_id}")
-        print('='*70)
-        
+        print("=" * 70)
+
         explanation = agent.explain(args.user_id)
-        
+
         print(f"\n{'='*70}")
         print("FINAL COMPLIANCE REPORT")
-        print('='*70)
+        print("=" * 70)
         print(explanation)
-        
+
     else:
         import numpy as np
-        fraud_probs = np.array(fraud_scores['fraud_probability'])
-        top_indices = np.argsort(fraud_probs)[-args.top_n:][::-1]
-        
+
+        fraud_probs = np.array(fraud_scores["fraud_probability"])
+        top_indices = np.argsort(fraud_probs)[-args.top_n :][::-1]
+
         print(f"\nExplaining top {args.top_n} most suspicious users...")
-        
+
         for rank, user_id in enumerate(top_indices, 1):
             print(f"\n{'='*70}")
             print(f"RANK {rank}: USER {user_id}")
-            print('='*70)
-            
+            print("=" * 70)
+
             explanation = agent.explain(int(user_id))
-            
+
             print(f"\n{'-'*70}")
             print("COMPLIANCE REPORT")
-            print('-'*70)
+            print("-" * 70)
             print(explanation)
             print()
+
 
 if __name__ == "__main__":
     main()
