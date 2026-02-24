@@ -21,6 +21,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 from datetime import datetime
+from datetime import timezone
 from fastapi import FastAPI, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -45,6 +46,7 @@ from auth import (
     blacklist_token,
     authenticate_user
 )
+import auth_models
 from models import AnalyzeRequest, AnalyzeResponse, ErrorResponse, HealthResponse, GraphResponse, GraphNode, GraphLink
 from logging_config import get_logger, hash_sensitive_data
 from audit_logger import log_audit_event
@@ -58,9 +60,19 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 os.chdir(BASE_DIR)
 
+VERSION = "2.0.0"  # Single source of truth for API version
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080").split(",")
 RATE_LIMIT = os.getenv("RATE_LIMIT_PER_MINUTE", "10")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# Fail fast if default JWT secrets are used in production (Bug #1)
+if ENVIRONMENT == "production":
+    _jwt_secret = os.getenv("JWT_SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION")
+    if _jwt_secret == "CHANGE_THIS_IN_PRODUCTION":
+        raise RuntimeError(
+            "FATAL: JWT_SECRET_KEY must be set in production! "
+            "Set it via environment variable before starting the server."
+        )
 
 # Initialize logger
 logger = get_logger()
@@ -69,8 +81,8 @@ logger = get_logger()
 app = FastAPI(
     title="SentinAL Fraud Detection API (Secured)",
     description="AI-powered fraud detection with Graph Neural Networks and GraphRAG",
-    version="2.0.0",
-    docs_url="/docs" if ENVIRONMENT == "development" else None,  # Disable docs in production
+    version=VERSION,  # Bug #10: use VERSION constant
+    docs_url="/docs" if ENVIRONMENT == "development" else None,
     redoc_url="/redoc" if ENVIRONMENT == "development" else None
 )
 
@@ -142,11 +154,13 @@ async def log_requests(request: Request, call_next):
     )
     return response
 
-# Global State
-agent = None
+# Global State  (Bug #5: removed duplicate `agent = None`)
 agent = None
 fraud_scores = None
 graph = None
+
+# Shared thread pool executor for async LLM calls (Bug #21: avoids per-request executor)
+_executor = ThreadPoolExecutor(max_workers=4)
 
 # Custom Exception Handlers
 @app.exception_handler(ValidationError)
@@ -207,24 +221,37 @@ async def startup_event():
         logger.warning(f"Failed to initialize tracing: {e}")
     
     # Load graph data
+    global graph, fraud_scores, agent  # Bug #8: `agent` must be declared global here
     try:
         logger.info("Loading transaction graph data...")
-        graph_data = load_data()
-        app.state.graph_data = graph_data
-        logger.info(f"✓ Loaded {len(graph_data['nodes'])} nodes and {len(graph_data['edges'])} edges")
+        import pickle
+        with open('data/graph_enhanced.pkl', 'rb') as f:
+            data = pickle.load(f)
+        
+        graph = data['graph']
+        fraud_scores = data['fraud_scores']
+        
+        logger.info(f"✓ Loaded graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
+        logger.info(f"✓ Loaded fraud scores for {len(fraud_scores)} users")
     except Exception as e:
         logger.error(f"❌ Failed to load graph data: {e}")
-        app.state.graph_data = None
+        graph = None
+        fraud_scores = None
     
-    # Initialize AI Agent
-    try:
-        logger.info("Initializing GraphRAG Fraud Explainer Agent...")
-        agent = FraudExplainerAgent()
-        app.state.fraud_agent = agent
-        logger.info("✓ AI Agent ready")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize AI agent: {e}")
-        logger.warning("API will run without AI explanations")
+    # Initialize AI Agent (requires graph data to be loaded first)
+    if graph is not None and fraud_scores is not None:
+        try:
+            logger.info("Initializing GraphRAG Fraud Explainer Agent...")
+            agent = FraudExplainerAgent(graph=graph, fraud_scores=fraud_scores)
+            app.state.fraud_agent = agent
+            logger.info("✓ AI Agent ready with Ollama")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize AI agent: {e}")
+            logger.warning("API will run without AI explanations")
+            agent = None
+    else:
+        logger.warning("Skipping AI agent initialization (graph data not loaded)")
+        agent = None
 
     # Initialize Explainer Module
     try:
@@ -265,8 +292,8 @@ async def health_check():
     
     return HealthResponse(
         status="healthy",
-        timestamp=datetime.now().isoformat(),
-        version="1.0.0",
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        version=VERSION,  # Bug #10: use VERSION constant (was hardcoded "1.0.0")
         cache=cache_health,
         instance_id=os.getenv("INSTANCE_ID", "unknown")
     )
@@ -290,9 +317,9 @@ async def readiness_check():
         checks["redis"] = cache_health.get("status") in ["connected", "fallback"]
         checks["cache"] = True
         
-        # Check if model data is loaded
-        checks["model"] = app.state.graph_data is not None
-        
+        # Check if model data is loaded (Bug #6: was app.state.graph_data which never exists)
+        checks["model"] = graph is not None and fraud_scores is not None
+
     except Exception as e:
         logger.error(f"Readiness check failed: {e}")
     
@@ -328,7 +355,7 @@ async def liveness_check():
 
 @app.post("/api/auth/login", tags=["Authentication"])
 @limiter.limit(f"{RATE_LIMIT}/minute")
-async def login(request: Request, email: str, password: str):
+async def login(request: Request, credentials: auth_models.LoginRequest):
     """
     Authenticate user and return access and refresh tokens.
     
@@ -340,10 +367,10 @@ async def login(request: Request, email: str, password: str):
         Access token, refresh token, and user info
     """
     # Authenticate user
-    user = authenticate_user(email, password)
+    user = authenticate_user(credentials.email, credentials.password)
     
     if not user:
-        logger.warning(f"Failed login attempt for email: {hash_sensitive_data(email)}")
+        logger.warning(f"Failed login attempt for email: {hash_sensitive_data(credentials.email)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -454,6 +481,7 @@ async def logout(
             detail="Logout failed"
         )
 
+# Bug #2: Public endpoint is now gated to development environment only
 @app.get("/analyze/{user_id}", response_model=AnalyzeResponse)
 @limiter.limit(f"{RATE_LIMIT}/minute")
 async def analyze_user_public(
@@ -474,12 +502,19 @@ async def analyze_user_public(
     
     Rate Limit: 10 requests per minute per IP
     """
+    # Bug #2: Block public endpoint in production
+    if ENVIRONMENT == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This demo endpoint is not available in production. Use /api/analyze/{user_id} with authentication."
+        )
+
     # Check if services are available
-    if agent is None or fraud_scores is None:
-        logger.error("Service unavailable: AI agent or data not loaded")
+    if fraud_scores is None:
+        logger.error("Service unavailable: data not loaded")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Service temporarily unavailable. AI system not connected."
+            detail="Service temporarily unavailable. Graph data not loaded."
         )
     
     # Validate user_id
@@ -502,31 +537,40 @@ async def analyze_user_public(
     
     # Perform analysis
     try:
-        # Get fraud score
-        if user_id >= len(fraud_scores['fraud_probability']):
+        # Bug #7: Standardize fraud_scores access — always use dict form
+        fraud_probs = fraud_scores.get('fraud_probability', fraud_scores) if isinstance(fraud_scores, dict) else fraud_scores
+        if user_id >= len(fraud_probs):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User ID {user_id} not found in dataset"
             )
+
+        score = float(fraud_probs[user_id])
         
-        score = fraud_scores['fraud_probability'][user_id]
-        
-        # Get AI explanation (Async)
-        try:
-            loop = asyncio.get_event_loop()
-            # Use a thread pool to avoid blocking the event loop
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                explanation = await loop.run_in_executor(
-                    executor, 
-                    agent.explain, 
-                    user_id
-                )
-        except Exception as e:
-            logger.warning(f"AI explanation failed: {e}")
+        # Get AI explanation (synchronous call - simpler and more reliable)
+        if agent is not None:
+            try:
+                explanation = agent.explain(user_id)
+                logger.info(f"AI explanation generated for user {user_id}")
+            except Exception as e:
+                logger.error(f"AI explanation failed for user {user_id}: {e}", exc_info=True)
+                explanation = f"AI explanation unavailable. Fraud score: {score:.3f}"
+        else:
             explanation = f"AI explanation unavailable. Fraud score: {score:.3f}"
         
-        # Determine fraud status
-        is_fraud = score > 0.8
+        # Determine fraud status and risk level
+        if score > 0.8:
+            is_fraud = True
+            risk_level = "high"
+            reason = "High fraud probability - Suspicious patterns detected"
+        elif score > 0.5:
+            is_fraud = True  # Medium suspicious
+            risk_level = "medium"
+            reason = "Medium fraud probability - Some suspicious patterns"
+        else:
+            is_fraud = False
+            risk_level = "low"
+            reason = "Normal transaction patterns"
         
         # Build response
         response = AnalyzeResponse(
@@ -534,7 +578,7 @@ async def analyze_user_public(
             user_id=user_id,
             score=f"{score:.3f}",
             is_fraud=is_fraud,
-            reason="Suspicious cyclic topology detected" if is_fraud else "Normal transaction patterns",
+            reason=reason,
             agent_report=explanation
         )
         
@@ -595,12 +639,12 @@ async def analyze_user_authenticated(
         curl -H "Authorization: Bearer YOUR_TOKEN" \\
              http://localhost:8000/api/analyze/77
     """
-    # Check if services are available
-    if agent is None or fraud_scores is None:
-        logger.error("Service unavailable: AI agent or data not loaded")
+    # Bug #11: Only block if fraud_scores itself isn't loaded; degrade gracefully without agent
+    if fraud_scores is None:
+        logger.error("Service unavailable: data not loaded")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Service temporarily unavailable. AI system not connected."
+            detail="Service temporarily unavailable. Data not loaded."
         )
     
     # Validate user_id
@@ -623,27 +667,30 @@ async def analyze_user_authenticated(
     
     # Perform analysis
     try:
-        # Get fraud score
-        if user_id >= len(fraud_scores['fraud_probability']):
+        # Bug #7: Standardize fraud_scores access
+        fraud_probs = fraud_scores.get('fraud_probability', fraud_scores) if isinstance(fraud_scores, dict) else fraud_scores
+        if user_id >= len(fraud_probs):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User ID {user_id} not found in dataset"
             )
-        
-        score = fraud_scores['fraud_probability'][user_id]
-        
-        # Get AI explanation (Async)
-        try:
-            loop = asyncio.get_event_loop()
-            with ThreadPoolExecutor(max_workers=3) as executor:
+
+        score = float(fraud_probs[user_id])
+
+        # Get AI explanation (Bug #21: use get_running_loop + shared executor)
+        if agent is not None:
+            try:
+                loop = asyncio.get_running_loop()  # Bug #21: was get_event_loop() (deprecated)
                 explanation = await loop.run_in_executor(
-                    executor, 
-                    agent.explain, 
+                    _executor,  # Bug #21: shared executor, not new per-request
+                    agent.explain,
                     user_id
                 )
-        except Exception as e:
-            logger.warning(f"AI explanation failed: {e}")
-            explanation = f"AI explanation unavailable. Fraud score: {score:.3f}"
+            except Exception as e:
+                logger.warning(f"AI explanation failed: {e}")
+                explanation = f"AI explanation unavailable. Fraud score: {score:.3f}"
+        else:
+            explanation = f"AI agent not available. Fraud score: {score:.3f}"
         
         # Determine fraud status
         is_fraud = score > 0.8

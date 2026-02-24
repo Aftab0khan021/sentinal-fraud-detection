@@ -142,8 +142,9 @@ Status: {'FLAGGED' if node_data.get('is_fraud', 0) == 1 else 'Normal'}
                 for cycle in user_cycles:
                     path = " -> ".join(str(n) for n in cycle)
                     output.append(f"  Loop: {path} -> {cycle[0]}")
-        except:
-            pass
+        except Exception as e:  # Bug #16: was bare `except: pass` — now logs the error
+            import logging as _log
+            _log.getLogger(__name__).warning(f"Cycle detection failed for subgraph: {e}")
             
         return "\n".join(output)
 
@@ -166,30 +167,31 @@ class FraudExplainerAgent:
     def explain(self, user_id: int) -> str:
         """
         Generate fraud explanation with Redis caching.
-        
+        Bug #4: Re-enabled caching (was fully commented out).
+
         Args:
             user_id: User ID to explain
-            
+
         Returns:
             Fraud explanation text
         """
-        # Check cache first
         cache_manager = get_cache_manager()
         cache_key = f"fraud_explanation:{user_id}"
-        
+
         cached_explanation = cache_manager.get(cache_key)
         if cached_explanation:
             print(f"  > [Cache HIT] Retrieved explanation for User {user_id}")
             return cached_explanation
-        
-        print(f"  > [Cache MISS] Generating new explanation for User {user_id}")
-        
+
+        print(f"  > [Generating] New explanation for User {user_id}")
+
         # Generate new explanation
         explanation = self._generate_explanation(user_id)
-        
+
         # Store in cache with 1 hour TTL
-        cache_manager.set(cache_key, explanation, ttl=3600)
-        
+        if isinstance(explanation, str) and explanation:
+            cache_manager.set(cache_key, explanation, ttl=3600)
+
         return explanation
 
     def _generate_explanation(self, user_id: int) -> str:

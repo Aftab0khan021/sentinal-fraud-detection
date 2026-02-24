@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # Development container
+  devcontainer:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - .:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+      - devcontainer-extensions:/root/.vscode-server/extensions
+      - devcontainer-extensions-insiders:/root/.vscode-server-insiders/extensions
+    command: sleep infinity
+    network_mode: service:redis-master
+    environment:
+      - ENVIRONMENT=development
+      - PYTHONPATH=/workspace/python
+    depends_on:
+      - redis-master
+
+  # Redis for development
+  redis-master:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass dev_password
+    volumes:
+      - redis-dev-data:/data
+
+  # Prometheus for development
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-dev-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  # Grafana for development
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-dev-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+volumes:
+  devcontainer-extensions:
+  devcontainer-extensions-insiders:
+  redis-dev-data:
+  prometheus-dev-data:
+  grafana-dev-data:

@@ -1,0 +1,136 @@
+{
+    "name": "SentinAL Fraud Detection",
+    "dockerComposeFile": "../docker-compose.dev.yml",
+    "service": "devcontainer",
+    "workspaceFolder": "/workspace",
+    // Features to install
+    "features": {
+        "ghcr.io/devcontainers/features/python:1": {
+            "version": "3.11"
+        },
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    // VS Code settings
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.linting.enabled": true,
+                "python.linting.pylintEnabled": false,
+                "python.linting.flake8Enabled": true,
+                "python.formatting.provider": "black",
+                "python.testing.pytestEnabled": true,
+                "python.testing.unittestEnabled": false,
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.organizeImports": true
+                },
+                "files.exclude": {
+                    "**/__pycache__": true,
+                    "**/*.pyc": true,
+                    "**/node_modules": true,
+                    "**/.pytest_cache": true,
+                    "**/.coverage": true
+                },
+                "[typescript]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                },
+                "[typescriptreact]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                },
+                "[javascript]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                },
+                "[json]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                }
+            },
+            // Extensions to install
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.black-formatter",
+                "ms-toolsai.jupyter",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode",
+                "bradlc.vscode-tailwindcss",
+                "GitHub.copilot",
+                "eamodio.gitlens",
+                "ms-azuretools.vscode-docker",
+                "redhat.vscode-yaml",
+                "bierner.markdown-mermaid",
+                "yzhang.markdown-all-in-one",
+                "streetsidesoftware.code-spell-checker",
+                "gruntfuggly.todo-tree",
+                "wayou.vscode-todo-highlight"
+            ]
+        }
+    },
+    // Port forwarding
+    "forwardPorts": [
+        3000, // Frontend
+        8000, // API
+        6379, // Redis
+        9090, // Prometheus
+        3001, // Grafana
+        16686, // Jaeger
+        5601, // Kibana
+        8080 // TorchServe
+    ],
+    // Port labels
+    "portsAttributes": {
+        "3000": {
+            "label": "Frontend",
+            "onAutoForward": "notify"
+        },
+        "8000": {
+            "label": "API",
+            "onAutoForward": "notify"
+        },
+        "6379": {
+            "label": "Redis",
+            "onAutoForward": "ignore"
+        },
+        "9090": {
+            "label": "Prometheus",
+            "onAutoForward": "ignore"
+        },
+        "3001": {
+            "label": "Grafana",
+            "onAutoForward": "ignore"
+        },
+        "16686": {
+            "label": "Jaeger",
+            "onAutoForward": "ignore"
+        },
+        "5601": {
+            "label": "Kibana",
+            "onAutoForward": "ignore"
+        },
+        "8080": {
+            "label": "TorchServe",
+            "onAutoForward": "ignore"
+        }
+    },
+    // Post-create command
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
+    // Post-start command
+    "postStartCommand": "docker-compose up -d redis-master prometheus grafana",
+    // Run as non-root user
+    "remoteUser": "vscode",
+    // Environment variables
+    "remoteEnv": {
+        "ENVIRONMENT": "development",
+        "PYTHONPATH": "/workspace/python"
+    },
+    // Mounts
+    "mounts": [
+        "source=${localWorkspaceFolder}/python/data,target=/workspace/python/data,type=bind",
+        "source=${localWorkspaceFolder}/python/models,target=/workspace/python/models,type=bind"
+    ]
+}

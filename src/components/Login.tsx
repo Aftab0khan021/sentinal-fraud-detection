@@ -97,9 +97,13 @@ export const Login: React.FC = () => {
                             )}
                         </Button>
 
-                        <p className="text-xs text-center text-muted-foreground">
-                            Demo credentials: demo@sentinal.ai / demo123
-                        </p>
+                        {/* Bug #14: Never expose raw credentials in the UI.
+                            Only show a hint in development mode, and never the password. */}
+                        {import.meta.env.DEV && (
+                            <p className="text-xs text-center text-muted-foreground">
+                                Dev mode — use demo@sentinal.ai with the configured demo password.
+                            </p>
+                        )}
                     </CardFooter>
                 </form>
             </Card>

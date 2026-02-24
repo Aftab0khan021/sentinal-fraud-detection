@@ -1,0 +1,2 @@
+# Add to requirements.txt
+strawberry-graphql[fastapi]==0.216.0

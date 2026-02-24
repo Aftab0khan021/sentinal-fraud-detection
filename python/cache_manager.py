@@ -18,8 +18,14 @@ import json
 import logging
 import os
 from typing import Optional, Any, Dict
-from functools import lru_cache
 from dotenv import load_dotenv
+
+# Bug #20: Use TTLCache instead of plain dict to prevent unbounded memory growth
+try:
+    from cachetools import TTLCache
+    _CACHETOOLS_AVAILABLE = True
+except ImportError:
+    _CACHETOOLS_AVAILABLE = False
 
 load_dotenv()
 
@@ -43,8 +49,12 @@ class CacheManager:
     def __init__(self):
         self.redis_enabled = os.getenv("REDIS_ENABLED", "true").lower() == "true"
         self.redis_client = None
-        self.fallback_cache = {}  # Simple dict for fallback
-        
+        # Bug #20: Use TTLCache (maxsize=1000, ttl=1hr) instead of plain unbounded dict
+        if _CACHETOOLS_AVAILABLE:
+            self.fallback_cache = TTLCache(maxsize=1000, ttl=3600)
+        else:
+            self.fallback_cache = {}  # Bare dict fallback if cachetools not installed
+
         if REDIS_AVAILABLE and self.redis_enabled:
             self._init_redis()
         else:

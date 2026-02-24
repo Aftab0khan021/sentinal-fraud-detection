@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { jwtDecode } from 'jwt-decode';
+import { api } from '@/services/api'; // Bug #3: use shared api service instead of hardcoded localhost
 
 interface User {
     id: string;
@@ -38,12 +39,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const decodeToken = useCallback((accessToken: string): User | null => {
         try {
             const decoded = jwtDecode<JWTPayload>(accessToken);
-
-            // Check if token is expired
             if (decoded.exp * 1000 < Date.now()) {
                 return null;
             }
-
             return {
                 id: decoded.sub,
                 email: decoded.email,
@@ -55,58 +53,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    // Initialize auth state from localStorage
-    useEffect(() => {
-        const initAuth = () => {
-            const storedToken = localStorage.getItem(TOKEN_KEY);
-
-            if (storedToken) {
-                const decodedUser = decodeToken(storedToken);
-
-                if (decodedUser) {
-                    setToken(storedToken);
-                    setUser(decodedUser);
-                } else {
-                    // Token expired, try to refresh
-                    refreshToken().catch(() => {
-                        // Refresh failed, clear everything
-                        localStorage.removeItem(TOKEN_KEY);
-                        localStorage.removeItem(REFRESH_TOKEN_KEY);
-                    });
-                }
-            }
-
-            setIsLoading(false);
-        };
-
-        initAuth();
-    }, [decodeToken]);
-
-    // Login function
-    const login = async (email: string, password: string) => {
+    // Bug #13: login wrapped in useCallback for referential stability
+    const login = useCallback(async (email: string, password: string) => {
         try {
-            const response = await fetch('http://localhost:8000/api/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email, password }),
-            });
+            // Bug #3: uses api service (reads VITE_API_URL) instead of hardcoded localhost
+            const data = await api.login(email, password);
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Login failed');
-            }
-
-            const data = await response.json();
-
-            // Store tokens
             localStorage.setItem(TOKEN_KEY, data.access_token);
             if (data.refresh_token) {
                 localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
             }
 
-            // Decode and set user
             const decodedUser = decodeToken(data.access_token);
             if (decodedUser) {
                 setToken(data.access_token);
@@ -118,24 +75,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Login error:', error);
             throw error;
         }
-    };
+    }, [decodeToken]);
 
     // Logout function
     const logout = useCallback(async () => {
         try {
-            // Call logout endpoint to invalidate token on server
             if (token) {
-                await fetch('http://localhost:8000/api/auth/logout', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
+                // Bug #3: uses api service instead of hardcoded localhost
+                await api.logout();
             }
         } catch (error) {
             console.error('Logout error:', error);
         } finally {
-            // Clear local state regardless of API call success
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(REFRESH_TOKEN_KEY);
             setToken(null);
@@ -143,8 +94,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [token]);
 
-    // Refresh token function
-    const refreshToken = async () => {
+    // Bug #12: refreshToken defined BEFORE useEffect so it's initialized when the effect runs
+    // Bug #13: wrapped in useCallback for referential stability
+    const refreshToken = useCallback(async () => {
         const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
 
         if (!storedRefreshToken) {
@@ -152,27 +104,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         try {
-            const response = await fetch('http://localhost:8000/api/auth/refresh', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ refresh_token: storedRefreshToken }),
-            });
+            // Bug #3: uses api service instead of hardcoded localhost
+            const data = await api.refreshToken(storedRefreshToken);
 
-            if (!response.ok) {
-                throw new Error('Token refresh failed');
-            }
-
-            const data = await response.json();
-
-            // Store new tokens
             localStorage.setItem(TOKEN_KEY, data.access_token);
             if (data.refresh_token) {
                 localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
             }
 
-            // Update state
             const decodedUser = decodeToken(data.access_token);
             if (decodedUser) {
                 setToken(data.access_token);
@@ -184,7 +123,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             logout();
             throw error;
         }
-    };
+    }, [decodeToken, logout]);
+
+    // Initialize auth state from localStorage
+    // Bug #12: refreshToken is now defined above, so it's safely in scope here
+    useEffect(() => {
+        const initAuth = async () => {
+            const storedToken = localStorage.getItem(TOKEN_KEY);
+
+            if (storedToken) {
+                const decodedUser = decodeToken(storedToken);
+
+                if (decodedUser) {
+                    setToken(storedToken);
+                    setUser(decodedUser);
+                } else {
+                    // Token expired, try to refresh
+                    try {
+                        await refreshToken();
+                    } catch {
+                        localStorage.removeItem(TOKEN_KEY);
+                        localStorage.removeItem(REFRESH_TOKEN_KEY);
+                    }
+                }
+            }
+
+            setIsLoading(false);
+        };
+
+        initAuth();
+    }, [decodeToken, refreshToken]);
 
     const value: AuthContextType = {
         user,

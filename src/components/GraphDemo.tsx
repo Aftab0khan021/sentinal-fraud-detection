@@ -28,7 +28,7 @@ export const GraphDemo = () => {
       // FETCH FROM YOUR PYTHON API
       // Since we are using the public demo endpoint /analyze/{user_id} which does not require auth
       // This matches the previous logic.
-      const response = await fetch(`http://localhost:8080/analyze/${nodeId}`);
+      const response = await fetch(`http://localhost:8000/analyze/${nodeId}`);
       if (!response.ok) throw new Error("API Connection Failed");
 
       const data = await response.json();
@@ -100,7 +100,9 @@ export const GraphDemo = () => {
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {activeReport.is_fraud
-                          ? "⚠️ High fraud probability detected"
+                          ? parseFloat(activeReport.score) > 0.8
+                            ? "🚨 High fraud probability detected"
+                            : "⚠️ Medium fraud probability detected"
                           : "✓ No suspicious activity detected"
                         }
                       </p>

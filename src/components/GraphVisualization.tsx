@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Card } from './ui/card';
-import { Loader2, ZoomIn, ZoomOut, RefreshCw, Filter } from 'lucide-react';
+import { Loader2, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { api } from '@/services/api';
 
@@ -35,27 +35,140 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 }) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Bug #19: use refs instead of state for D3 mutable objects to avoid stale closures
+    const simulationRef = useRef<d3.Simulation<Node, Link> | null>(null);
+    // Bug #18: create zoom behavior once and store it in a ref
+    const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+
     const [data, setData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [simulation, setSimulation] = useState<d3.Simulation<Node, Link> | null>(null);
-    const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
+    const [usingFallback, setUsingFallback] = useState(false);
+
+    // Bug #18: initialize zoom ONCE on mount
+    useEffect(() => {
+        if (!svgRef.current) return;
+
+        const zoom = d3.zoom<SVGSVGElement, unknown>()
+            .scaleExtent([0.1, 4])
+            .on('zoom', (event) => {
+                d3.select('#graph-group').attr('transform', event.transform);
+            });
+
+        zoomRef.current = zoom;
+        d3.select(svgRef.current).call(zoom);
+    }, []); // runs only once on mount
+
+    const initSimulation = useCallback((nodes: Node[], links: Link[]) => {
+        if (!svgRef.current || !containerRef.current) return;
+
+        const width = containerRef.current.clientWidth;
+        const height = containerRef.current.clientHeight;
+
+        // Bug #19: stop old simulation synchronously via ref before creating new one
+        if (simulationRef.current) {
+            simulationRef.current.stop();
+        }
+
+        const sim = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id((d: any) => d.id).distance(100))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collide', d3.forceCollide().radius(30));
+
+        simulationRef.current = sim;
+    }, []);
+
+    const renderGraph = useCallback((graphData: GraphData) => {
+        if (!svgRef.current || !simulationRef.current) return;
+
+        const simulation = simulationRef.current;
+        const g = d3.select('#graph-group');
+        g.selectAll('*').remove(); // Clear previous
+
+        // Links
+        const link = g.append('g')
+            .selectAll('line')
+            .data(graphData.links)
+            .enter().append('line')
+            .attr('stroke', d => d.is_laundering ? '#ef4444' : '#94a3b8')
+            .attr('stroke-width', d => d.is_laundering ? 2 : 1)
+            .attr('stroke-opacity', 0.6);
+
+        // Nodes
+        const node = g.append('g')
+            .selectAll('g')
+            .data(graphData.nodes)
+            .enter().append('g')
+            .attr('cursor', 'pointer')
+            .call(d3.drag<any, any>()
+                .on('start', (event, d) => {
+                    if (!event.active) simulation.alphaTarget(0.3).restart();
+                    d.fx = d.x;
+                    d.fy = d.y;
+                })
+                .on('drag', (event, d) => {
+                    d.fx = event.x;
+                    d.fy = event.y;
+                })
+                .on('end', (event, d) => {
+                    if (!event.active) simulation.alphaTarget(0);
+                    d.fx = null;
+                    d.fy = null;
+                }));
+
+        node.append('circle')
+            .attr('r', d => d.is_fraud ? 8 : 5)
+            .attr('fill', d => d.is_fraud ? '#ef4444' : '#22c55e')
+            .attr('stroke', '#ffffff')
+            .attr('stroke-width', 1.5);
+
+        // Highlight selected node
+        if (selectedNodeId !== null && selectedNodeId !== undefined) {
+            node.filter(d => parseInt(d.id) === selectedNodeId)
+                .append('circle')
+                .attr('r', 12)
+                .attr('fill', 'none')
+                .attr('stroke', '#3b82f6')
+                .attr('stroke-width', 2);
+        }
+
+        node.append('title')
+            .text(d => `User ${d.id}\nScore: ${d.fraud_probability.toFixed(3)}`);
+
+        node.on('click', (_event, d) => {
+            onNodeSelect(parseInt(d.id));
+        });
+
+        simulation.on('tick', () => {
+            link
+                .attr('x1', d => (d.source as Node).x!)
+                .attr('y1', d => (d.source as Node).y!)
+                .attr('x2', d => (d.target as Node).x!)
+                .attr('y2', d => (d.target as Node).y!);
+
+            node.attr('transform', d => `translate(${d.x},${d.y})`);
+        });
+
+    }, [selectedNodeId, onNodeSelect]);
 
     // Fetch Data
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         setError(null);
+        setUsingFallback(false);
         try {
             const jsonData = await api.getGraphData();
             setData(jsonData);
-
-            // Initialize simulation with new data
             if (jsonData.nodes.length > 0) {
                 initSimulation(jsonData.nodes, jsonData.links);
             }
         } catch (err: any) {
             console.error(err);
-            setError(err.response?.data?.detail || err.message || "An error occurred");
+            const errMsg = err.response?.data?.detail || err.message || 'An error occurred';
+            setError(errMsg);
+
             // Fallback data for demo if API fails
             const fallbackNodes = Array.from({ length: 20 }, (_, i) => ({
                 id: i.toString(),
@@ -63,157 +176,51 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
                 risk_score: Math.random(),
                 fraud_probability: i % 5 === 0 ? 0.9 : 0.1
             }));
-            const fallbackLinks = [];
+            const fallbackLinks: any[] = [];
             for (let i = 0; i < 20; i++) {
                 if (i < 19) fallbackLinks.push({ source: i.toString(), target: (i + 1).toString(), amount: 1000, is_laundering: false });
                 if (i % 5 === 0) fallbackLinks.push({ source: i.toString(), target: ((i + 2) % 20).toString(), amount: 5000, is_laundering: true });
             }
             setData({ nodes: fallbackNodes, links: fallbackLinks });
+            setUsingFallback(true);
             initSimulation(fallbackNodes, fallbackLinks);
         } finally {
             setLoading(false);
         }
-    };
+    }, [initSimulation]);
 
     useEffect(() => {
         fetchData();
+    }, [fetchData]);
+
+    // Re-render graph when data or selected node changes
+    useEffect(() => {
+        if (data && simulationRef.current) {
+            renderGraph(data);
+        }
+    }, [data, renderGraph]);
+
+    // Cleanup simulation on unmount
+    useEffect(() => {
+        return () => {
+            simulationRef.current?.stop();
+        };
     }, []);
 
-    // Initialize D3 Simulation
-    const initSimulation = (nodes: Node[], links: Link[]) => {
-        if (!svgRef.current || !containerRef.current) return;
-
-        const width = containerRef.current.clientWidth;
-        const height = containerRef.current.clientHeight;
-
-        // Clear previous simulation
-        if (simulation) simulation.stop();
-
-        const sim = d3.forceSimulation(nodes)
-            .force("link", d3.forceLink(links).id((d: any) => d.id).distance(100))
-            .force("charge", d3.forceManyBody().strength(-300))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(30));
-
-        setSimulation(sim);
-    };
-
-    // Render Graph
-    useEffect(() => {
-        if (!simulation || !data || !svgRef.current) return;
-
-        const svg = d3.select(svgRef.current);
-
-        // Zoom behavior
-        const zoom = d3.zoom<SVGSVGElement, unknown>()
-            .scaleExtent([0.1, 4])
-            .on("zoom", (event) => {
-                setTransform(event.transform);
-                d3.select("#graph-group").attr("transform", event.transform);
-            });
-
-        svg.call(zoom);
-
-        // Initial render logic updates are handled by Rerender on transform/data change usually, 
-        // but D3 works best with direct DOM manipulation for the simulation tick.
-        // However, for React, we can let D3 handle the positions and React render the elements, 
-        // OR likely better: Let React render elements based on state, but that might be slow.
-        // Best practice: Let D3 manage DOM or use a ref to sync. 
-        // For this simple case, I'll use the "D3 updates DOM" approach for performance.
-
-        const g = d3.select("#graph-group");
-        g.selectAll("*").remove(); // Clear previous
-
-        // Links
-        const link = g.append("g")
-            .selectAll("line")
-            .data(data.links)
-            .enter().append("line")
-            .attr("stroke", d => d.is_laundering ? "#ef4444" : "#94a3b8")
-            .attr("stroke-width", d => d.is_laundering ? 2 : 1)
-            .attr("stroke-opacity", 0.6);
-
-        // Nodes
-        const node = g.append("g")
-            .selectAll("g")
-            .data(data.nodes)
-            .enter().append("g")
-            .attr("cursor", "pointer")
-            .call(d3.drag<any, any>()
-                .on("start", dragstarted)
-                .on("drag", dragged)
-                .on("end", dragended));
-
-        node.append("circle")
-            .attr("r", d => d.is_fraud ? 8 : 5)
-            .attr("fill", d => d.is_fraud ? "#ef4444" : "#22c55e")
-            .attr("stroke", "#ffffff")
-            .attr("stroke-width", 1.5);
-
-        // Highlight selected
-        if (selectedNodeId !== null && selectedNodeId !== undefined) {
-            node.filter(d => parseInt(d.id) === selectedNodeId)
-                .append("circle")
-                .attr("r", 12)
-                .attr("fill", "none")
-                .attr("stroke", "#3b82f6")
-                .attr("stroke-width", 2);
-        }
-
-        node.append("title")
-            .text(d => `User ${d.id}\nScore: ${d.fraud_probability.toFixed(3)}`);
-
-        node.on("click", (event, d) => {
-            onNodeSelect(parseInt(d.id));
-        });
-
-        simulation.on("tick", () => {
-            link
-                .attr("x1", d => (d.source as Node).x!)
-                .attr("y1", d => (d.source as Node).y!)
-                .attr("x2", d => (d.target as Node).x!)
-                .attr("y2", d => (d.target as Node).y!);
-
-            node
-                .attr("transform", d => `translate(${d.x},${d.y})`);
-        });
-
-        function dragstarted(event: any, d: any) {
-            if (!event.active) simulation?.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-
-        function dragged(event: any, d: any) {
-            d.fx = event.x;
-            d.fy = event.y;
-        }
-
-        function dragended(event: any, d: any) {
-            if (!event.active) simulation?.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-        }
-
-        return () => {
-            simulation.stop();
-        };
-    }, [simulation, data, selectedNodeId]); // Re-bind if simulation or data changes
-
-    // Zoom Controls
+    // Zoom Controls — Bug #18: use the stored zoomRef instance
     const handleZoomIn = () => {
-        if (!svgRef.current) return;
-        d3.select(svgRef.current).transition().duration(300).call(d3.zoom<SVGSVGElement, unknown>().scaleBy, 1.2);
+        if (!svgRef.current || !zoomRef.current) return;
+        d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.scaleBy, 1.2);
     };
 
     const handleZoomOut = () => {
-        if (!svgRef.current) return;
-        d3.select(svgRef.current).transition().duration(300).call(d3.zoom<SVGSVGElement, unknown>().scaleBy, 0.8);
+        if (!svgRef.current || !zoomRef.current) return;
+        d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.scaleBy, 0.8);
     };
 
     const handleReset = () => {
-        if (!svgRef.current) return;
-        d3.select(svgRef.current).transition().duration(500).call(d3.zoom<SVGSVGElement, unknown>().transform, d3.zoomIdentity);
+        if (!svgRef.current || !zoomRef.current) return;
+        d3.select(svgRef.current).transition().duration(500).call(zoomRef.current.transform, d3.zoomIdentity);
     };
 
     return (
@@ -224,9 +231,10 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
                 </div>
             )}
 
-            {error && !loading && !data && (
-                <div className="absolute inset-0 flex items-center justify-center text-red-500 z-50">
-                    <p>{error}</p>
+            {/* Bug #25: show error banner even when fallback data is present */}
+            {error && !loading && (
+                <div className="absolute top-0 left-0 right-0 flex items-center justify-center bg-red-900/80 text-red-200 text-xs px-3 py-1 z-50">
+                    <span>⚠ API error: {error}{usingFallback ? ' — showing demo data' : ''}</span>
                 </div>
             )}
 

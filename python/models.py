@@ -8,14 +8,15 @@ Date: 2026-01-23
 """
 
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field  # Bug #15: removed deprecated validator import
 
 
 class AnalyzeRequest(BaseModel):
     """
     Request model for user fraud analysis.
-    
+
     Validates that user_id is within acceptable range.
+    Field(ge=0, le=99) already enforces bounds — the redundant @validator is removed (Bug #15).
     """
     user_id: int = Field(
         ...,
@@ -23,14 +24,7 @@ class AnalyzeRequest(BaseModel):
         le=99,
         description="User ID to analyze (must be between 0 and 99)"
     )
-    
-    @validator('user_id')
-    def validate_user_id(cls, v):
-        """Additional validation for user_id"""
-        if v < 0 or v > 99:
-            raise ValueError(f"User ID must be between 0 and 99, got {v}")
-        return v
-    
+
     class Config:
         json_schema_extra = {
             "example": {
