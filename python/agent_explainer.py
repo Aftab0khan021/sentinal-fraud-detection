@@ -11,6 +11,7 @@ Author: SentinAL Project
 Date: 2025
 """
 
+import logging
 import networkx as nx
 import json
 import argparse
@@ -27,6 +28,8 @@ from cache_manager import get_cache_manager
 # We only need Ollama, no complex Agent classes needed anymore
 from langchain_ollama import OllamaLLM
 import random
+
+logger = logging.getLogger(__name__)
 
 
 class PromptManager:
@@ -98,7 +101,8 @@ class GraphQueryTool:
         node_data = self.graph.nodes[user_id]
         try:
             fraud_prob = self.fraud_scores["fraud_probability"][user_id]
-        except:
+        except Exception as e:  # B7: was bare except — now logs the error
+            logger.warning("Could not fetch fraud probability for user %d: %s", user_id, e)
             fraud_prob = 0.0
 
         return f"""
@@ -162,8 +166,8 @@ class FraudExplainerAgent:
         self.fraud_scores = fraud_scores
         self.tool = GraphQueryTool(graph, fraud_scores)
 
-        print(f"\nInitializing Ollama with model: {model}")
-        print("⚠️  Make sure Ollama is running: 'ollama serve'")
+        logger.info("Initializing Ollama with model: %s", model)  # B20: was print()
+        logger.info("Make sure Ollama is running: 'ollama serve'")
 
         # Temperature 0.1 makes it very factual and less likely to hallucinate
         self.llm = OllamaLLM(model=model, temperature=0.1)
@@ -185,10 +189,10 @@ class FraudExplainerAgent:
 
         cached_explanation = cache_manager.get(cache_key)
         if cached_explanation:
-            print(f"  > [Cache HIT] Retrieved explanation for User {user_id}")
+            logger.debug("[Cache HIT] Retrieved explanation for User %d", user_id)
             return cached_explanation
 
-        print(f"  > [Generating] New explanation for User {user_id}")
+        logger.info("[Generating] New explanation for User %d", user_id)
 
         # Generate new explanation
         explanation = self._generate_explanation(user_id)
@@ -204,46 +208,42 @@ class FraudExplainerAgent:
         Internal method to generate explanation (not cached directly).
         """
         # 1. GATHER DATA (Python does this reliably)
-        print(f"  > [System] Fetching profile for Node {user_id}...")
+        logger.debug("[System] Fetching profile for Node %d", user_id)
         profile = self.tool.get_user_info(user_id)
 
-        print(f"  > [System] Analyzing network topology...")
+        logger.debug("[System] Analyzing network topology")
         topology = self.tool.get_k_hop_subgraph(user_id)
 
-        # 2. CONSTRUCT PROMPT (UPDATED FIX)
-        # Using A/B Testing Manager
+        # 2. CONSTRUCT PROMPT — A/B Testing Manager
         prompt_id, prompt = self.prompt_manager.get_prompt(profile, topology)
-        print(f"  > [A/B Testing] Using Prompt: {prompt_id}")
+        logger.debug("[A/B Testing] Using Prompt: %s", prompt_id)
 
         # 3. GENERATE (LLM just summarizes)
         try:
-            print("  > [AI] Generating summary report...")
+            logger.info("[AI] Generating summary report for User %d", user_id)
             response = self.llm.invoke(prompt)
-            print("  > [Cache] Storing result")
+            logger.debug("[Cache] Storing result for User %d", user_id)
             return response
         except Exception as e:
+            logger.error("Error connecting to Ollama: %s", e)
             return f"Error connecting to Ollama: {str(e)}"
 
 
 def load_data():
-    print("\nLoading data...")
+    """Load graph and fraud scores from disk (used by CLI entry point)."""
+    logger.info("Loading data...")
     try:
         with open("data/graph_enhanced.pkl", "rb") as f:
-            graph = pickle.load(f)
-        print(f"✓ Loaded graph with {graph.number_of_nodes()} nodes")
+            data = pickle.load(f)   # B10: expects dict {"graph": ..., "fraud_scores": ...}
+        graph = data["graph"]
+        fraud_scores = data["fraud_scores"]
+        logger.info("Loaded graph with %d nodes", graph.number_of_nodes())
     except FileNotFoundError:
-        print("❌ Error: data/graph_enhanced.pkl not found. Run data_gen_enhanced.py first.")
+        logger.error("data/graph_enhanced.pkl not found. Run data_gen_enhanced.py first.")
         raise FileNotFoundError("data/graph_enhanced.pkl not found")
-
-    try:
-        with open("reports/fraud_scores_improved.json", "r") as f:
-            fraud_scores = json.load(f)
-        print(f"✓ Loaded fraud scores")
-    except FileNotFoundError:
-        print(
-            "❌ Error: reports/fraud_scores_improved.json not found. Run gnn_train_improved.py first."
-        )
-        raise FileNotFoundError("reports/fraud_scores_improved.json not found")
+    except (KeyError, TypeError) as e:
+        logger.error("Unexpected pkl format: %s", e)
+        raise
 
     return graph, fraud_scores
 

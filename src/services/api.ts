@@ -64,12 +64,13 @@ apiClient.interceptors.response.use(
 
                 return apiClient(originalRequest);
             } catch (refreshError) {
-                // Refresh failed, clear tokens and redirect to login
+                // Refresh failed — clear tokens and signal the app to redirect via React state.
+                // Using window.location.href would cause a hard reload that races with React
+                // Router and AuthContext's async logout(). Fire a custom event instead so
+                // AuthProvider can do a clean logout and let React Router navigate.
                 localStorage.removeItem('sentinal_access_token');
                 localStorage.removeItem('sentinal_refresh_token');
-
-                // Redirect to login page
-                window.location.href = '/login';
+                window.dispatchEvent(new CustomEvent('sentinal:logout'));
 
                 return Promise.reject(refreshError);
             }
@@ -78,6 +79,7 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
     }
 );
+
 
 // API service functions
 export const api = {

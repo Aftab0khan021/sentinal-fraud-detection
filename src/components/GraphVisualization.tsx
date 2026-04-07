@@ -72,7 +72,7 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
         }
 
         const sim = d3.forceSimulation(nodes)
-            .force('link', d3.forceLink(links).id((d: any) => d.id).distance(100))
+            .force('link', d3.forceLink<Node, Link>(links).id((d) => (d as Node).id).distance(100))
             .force('charge', d3.forceManyBody().strength(-300))
             .force('center', d3.forceCenter(width / 2, height / 2))
             .force('collide', d3.forceCollide().radius(30));
@@ -102,7 +102,7 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
             .data(graphData.nodes)
             .enter().append('g')
             .attr('cursor', 'pointer')
-            .call(d3.drag<any, any>()
+            .call(d3.drag<SVGGElement, Node>()
                 .on('start', (event, d) => {
                     if (!event.active) simulation.alphaTarget(0.3).restart();
                     d.fx = d.x;
@@ -164,9 +164,10 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
             if (jsonData.nodes.length > 0) {
                 initSimulation(jsonData.nodes, jsonData.links);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            const errMsg = err.response?.data?.detail || err.message || 'An error occurred';
+            const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+            const errMsg = axiosErr.response?.data?.detail || axiosErr.message || 'An error occurred';
             setError(errMsg);
 
             // Fallback data for demo if API fails
@@ -176,7 +177,7 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
                 risk_score: Math.random(),
                 fraud_probability: i % 5 === 0 ? 0.9 : 0.1
             }));
-            const fallbackLinks: any[] = [];
+            const fallbackLinks: Link[] = [];
             for (let i = 0; i < 20; i++) {
                 if (i < 19) fallbackLinks.push({ source: i.toString(), target: (i + 1).toString(), amount: 1000, is_laundering: false });
                 if (i % 5 === 0) fallbackLinks.push({ source: i.toString(), target: ((i + 2) % 20).toString(), amount: 5000, is_laundering: true });

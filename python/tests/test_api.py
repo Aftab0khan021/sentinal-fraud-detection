@@ -25,27 +25,37 @@ def test_health_check(client):
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
+    # B5: HealthResponse contains status/timestamp/version/cache/instance_id
     assert "status" in data
-    assert "ai_connected" in data
-    assert "data_loaded" in data
+    assert data["status"] == "healthy"
+    assert "version" in data
+    assert "cache" in data
 
 
-def test_analyze_without_auth(client):
-    """Test analyze endpoint without authentication"""
+def test_analyze_public_endpoint_dev(client):
+    """Test public analyze endpoint — returns data in dev mode (not 403)"""
+    # B6: The /analyze/{id} public endpoint returns 200 (or 503 if data not loaded)
+    # in development mode. It only returns 403 in production.
     response = client.get("/analyze/77")
-    assert response.status_code == 403  # Forbidden
+    assert response.status_code in [200, 503]
+
+
+def test_analyze_authenticated_without_auth(client):
+    """Test authenticated analyze endpoint without a token returns 403"""
+    response = client.get("/api/analyze/77")
+    assert response.status_code == 403  # Forbidden — no Bearer token
 
 
 def test_analyze_with_invalid_token(client):
-    """Test analyze endpoint with invalid token"""
+    """Test authenticated analyze endpoint with invalid token"""
     headers = {"Authorization": "Bearer invalid-token"}
-    response = client.get("/analyze/77", headers=headers)
+    response = client.get("/api/analyze/77", headers=headers)
     assert response.status_code == 401  # Unauthorized
 
 
 def test_analyze_with_valid_token(client, auth_headers):
-    """Test analyze endpoint with valid authentication"""
-    response = client.get("/analyze/77", headers=auth_headers)
+    """Test authenticated analyze endpoint with valid authentication"""
+    response = client.get("/api/analyze/77", headers=auth_headers)
 
     # May be 200 (success) or 503 (if AI not loaded in test)
     assert response.status_code in [200, 503]
@@ -56,12 +66,12 @@ def test_analyze_with_valid_token(client, auth_headers):
 
 def test_analyze_invalid_user_id(client, auth_headers):
     """Test analyze endpoint with invalid user_id"""
-    # Test out of range
-    response = client.get("/analyze/999", headers=auth_headers)
+    # Test out of range — hits authenticated endpoint to get proper validation
+    response = client.get("/api/analyze/999", headers=auth_headers)
     assert response.status_code in [400, 404]  # Bad Request or Not Found
 
     # Test negative
-    response = client.get("/analyze/-1", headers=auth_headers)
+    response = client.get("/api/analyze/-1", headers=auth_headers)
     assert response.status_code == 400
 
 
@@ -70,7 +80,7 @@ def test_rate_limiting(client, auth_headers):
     # Make 11 rapid requests
     responses = []
     for i in range(11):
-        response = client.get("/analyze/77", headers=auth_headers)
+        response = client.get("/api/analyze/77", headers=auth_headers)
         responses.append(response.status_code)
         time.sleep(0.1)  # Small delay between requests
 
@@ -96,7 +106,7 @@ def test_security_headers(client):
 
 def test_validation_error_format(client, auth_headers):
     """Test that validation errors return proper format"""
-    response = client.get("/analyze/abc", headers=auth_headers)
+    response = client.get("/api/analyze/abc", headers=auth_headers)
     assert response.status_code == 422  # Unprocessable Entity (FastAPI validation)
 
     data = response.json()
@@ -104,13 +114,13 @@ def test_validation_error_format(client, auth_headers):
 
 
 def test_missing_authorization_header(client):
-    """Test request without Authorization header"""
-    response = client.get("/analyze/77")
+    """Test authenticated endpoint without Authorization header returns 403"""
+    response = client.get("/api/analyze/77")
     assert response.status_code == 403
 
 
 def test_malformed_authorization_header(client):
     """Test request with malformed Authorization header"""
     headers = {"Authorization": "InvalidFormat"}
-    response = client.get("/analyze/77", headers=headers)
+    response = client.get("/api/analyze/77", headers=headers)
     assert response.status_code in [401, 403]

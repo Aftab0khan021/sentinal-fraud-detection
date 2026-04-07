@@ -18,6 +18,8 @@ Date: 2026-01-23
 import logging
 import time
 import asyncio
+import hashlib
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 from datetime import datetime
@@ -85,13 +87,113 @@ if ENVIRONMENT == "production":
 # Initialize logger
 logger = get_logger()
 
+# Global State
+agent = None
+fraud_scores = None
+graph = None
+
+# Shared thread pool executor for async LLM calls
+_executor = ThreadPoolExecutor(max_workers=4)
+
+
+async def _startup(app_instance):
+    """Initialize resources on startup."""
+    logger.info("=" * 50)
+    logger.info("Starting SentinAL Fraud Detection API")
+    logger.info(f"Environment: {ENVIRONMENT}")
+    logger.info(f"Allowed Origins: {ALLOWED_ORIGINS}")
+    logger.info(f"Instance ID: {os.getenv('INSTANCE_ID', 'unknown')}")
+    logger.info("=" * 50)
+
+    # Initialize distributed tracing
+    try:
+        logger.info("Initializing distributed tracing...")
+        init_tracing(app_instance, service_name="sentinal-api", service_version=VERSION)
+    except Exception as e:
+        logger.warning(f"Failed to initialize tracing: {e}")
+
+    # Load graph data
+    global graph, fraud_scores, agent
+    try:
+        logger.info("Loading transaction graph data...")
+        import pickle
+
+        pkl_path = "data/graph_enhanced.pkl"
+
+        # B2: Verify file integrity via SHA-256 hash before loading.  
+        # Set PKL_SHA256 env var to the expected hash to enable this check.
+        expected_hash = os.getenv("PKL_SHA256")
+        if expected_hash:
+            sha256 = hashlib.sha256(Path(pkl_path).read_bytes()).hexdigest()
+            if sha256 != expected_hash:
+                raise RuntimeError(
+                    f"Integrity check failed for {pkl_path}: "
+                    f"got {sha256}, expected {expected_hash}. "
+                    "File may have been tampered with."
+                )
+            logger.info("✓ PKL integrity check passed")
+
+        with open(pkl_path, "rb") as f:
+            data = pickle.load(f)
+
+        graph = data["graph"]
+        fraud_scores = data["fraud_scores"]
+
+        logger.info(
+            f"✓ Loaded graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges"
+        )
+        logger.info(f"✓ Loaded fraud scores for {len(fraud_scores.get('fraud_probability', {}))} users")
+    except Exception as e:
+        logger.error(f"❌ Failed to load graph data: {e}")
+        graph = None
+        fraud_scores = None
+
+    # Initialize AI Agent (requires graph data to be loaded first)
+    if graph is not None and fraud_scores is not None:
+        try:
+            logger.info("Initializing GraphRAG Fraud Explainer Agent...")
+            agent = FraudExplainerAgent(graph=graph, fraud_scores=fraud_scores)
+            app_instance.state.fraud_agent = agent
+            logger.info("✓ AI Agent ready with Ollama")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize AI agent: {e}")
+            logger.warning("API will run without AI explanations")
+            agent = None
+    else:
+        logger.warning("Skipping AI agent initialization (graph data not loaded)")
+        agent = None
+
+    # Initialize Explainer Module
+    try:
+        logger.info("Initializing Advanced Explainer Module...")
+        init_explainer_module()
+        logger.info("✓ Explainer module ready")
+    except Exception as e:
+        logger.error(f"❌ Failed to init explainer: {e}")
+
+    logger.info("=" * 50)
+    logger.info("✓ SentinAL API Ready")
+    logger.info("=" * 50)
+
+    app_instance.state.start_time = time.time()
+
+
+# B4: Lifespan context manager (replaces deprecated @app.on_event)
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    await _startup(app_instance)
+    yield
+    logger.info("SentinAL API shutting down")
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="SentinAL Fraud Detection API (Secured)",
     description="AI-powered fraud detection with Graph Neural Networks and GraphRAG",
-    version=VERSION,  # Bug #10: use VERSION constant
+    version=VERSION,
     docs_url="/docs" if ENVIRONMENT == "development" else None,
     redoc_url="/redoc" if ENVIRONMENT == "development" else None,
+    lifespan=lifespan,  # B4: replaces deprecated @app.on_event
 )
 
 # Rate Limiter
@@ -164,14 +266,6 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Response: {response.status_code}", extra={"status_code": response.status_code})
     return response
 
-
-# Global State  (Bug #5: removed duplicate `agent = None`)
-agent = None
-fraud_scores = None
-graph = None
-
-# Shared thread pool executor for async LLM calls (Bug #21: avoids per-request executor)
-_executor = ThreadPoolExecutor(max_workers=4)
 
 
 # Custom Exception Handlers
@@ -428,8 +522,18 @@ async def refresh_token_endpoint(request: Request, body: auth_models.RefreshRequ
         # Verify refresh token (body.refresh_token from JSON body)
         user_id = verify_refresh_token(body.refresh_token)
 
+        # Re-fetch the user to include all claims (email, username) in the new access token.
+        # Without this, the frontend decodes the token and gets undefined email/username.
+        from auth import DEMO_USERS as _users
+        user_record = next((u for u in _users.values() if u["id"] == user_id), None)
+
+        token_data: dict = {"sub": user_id}
+        if user_record:
+            token_data["email"] = user_record["email"]
+            token_data["username"] = user_record["username"]
+
         # Create new tokens
-        access_token = create_access_token(data={"sub": user_id})
+        access_token = create_access_token(data=token_data)
         new_refresh_token = create_refresh_token(data={"sub": user_id})
 
         logger.info(f"Token refreshed for user: {user_id}")
@@ -439,6 +543,7 @@ async def refresh_token_endpoint(request: Request, body: auth_models.RefreshRequ
             "refresh_token": new_refresh_token,
             "token_type": "bearer",
         }
+
     except HTTPException:
         raise
     except Exception as e:
@@ -514,9 +619,9 @@ async def analyze_user_public(request: Request, user_id: int):
             detail="Service temporarily unavailable. Graph data not loaded.",
         )
 
-    # Validate user_id
+    # Validate user_id range (B12: call without storing unused variable)
     try:
-        validated_request = AnalyzeRequest(user_id=user_id)
+        AnalyzeRequest(user_id=user_id)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -643,9 +748,9 @@ async def analyze_user_authenticated(
             detail="Service temporarily unavailable. Data not loaded.",
         )
 
-    # Validate user_id
+    # Validate user_id range (B12: just call, no unused variable)
     try:
-        validated_request = AnalyzeRequest(user_id=user_id)
+        AnalyzeRequest(user_id=user_id)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -771,12 +876,14 @@ async def get_graph_data(request: Request, current_user: str = Depends(get_curre
 
         links = []
         for u, v, data in graph.edges(data=True):
+            # B13: use is_laundering field; fall back to is_fraud_edge for older pkl files
+            is_laund = bool(data.get("is_laundering", data.get("is_fraud_edge", False)))
             links.append(
                 GraphLink(
                     source=str(u),
                     target=str(v),
                     amount=float(data.get("amount", 0.0)),
-                    is_laundering=bool(data.get("is_laundering", False)),
+                    is_laundering=is_laund,
                 )
             )
 

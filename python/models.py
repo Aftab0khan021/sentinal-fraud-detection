@@ -8,7 +8,7 @@ Date: 2026-01-23
 """
 
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field  # Bug #15: removed deprecated validator import
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class AnalyzeRequest(BaseModel):
@@ -23,8 +23,7 @@ class AnalyzeRequest(BaseModel):
         ..., ge=0, le=99, description="User ID to analyze (must be between 0 and 99)"
     )
 
-    class Config:
-        json_schema_extra = {"example": {"user_id": 77}}
+    model_config = ConfigDict(json_schema_extra={"example": {"user_id": 77}})
 
 
 class AnalyzeResponse(BaseModel):
@@ -39,8 +38,8 @@ class AnalyzeResponse(BaseModel):
     reason: Optional[str] = Field(default=None, description="Brief reason for the classification")
     agent_report: str = Field(..., description="Detailed AI-generated explanation")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "error": False,
                 "user_id": 77,
@@ -50,6 +49,7 @@ class AnalyzeResponse(BaseModel):
                 "agent_report": "User 77 exhibits high-risk behavior consistent with money laundering...",
             }
         }
+    )
 
 
 class GraphNode(BaseModel):
@@ -88,10 +88,9 @@ class ErrorResponse(BaseModel):
     detail: str = Field(..., description="Error message")
     status_code: int = Field(..., description="HTTP status code")
 
-    class Config:
-        json_schema_extra = {
-            "example": {"error": True, "detail": "User ID 999 does not exist", "status_code": 400}
-        }
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"error": True, "detail": "User ID 999 does not exist", "status_code": 400}}
+    )
 
 
 class HealthResponse(BaseModel):
@@ -105,7 +104,6 @@ class HealthResponse(BaseModel):
         default="unknown", description="Instance identifier for load balancing"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {"status": "healthy", "ai_connected": True, "data_loaded": True}
-        }
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"status": "healthy", "version": "2.0.0", "cache": {}}}
+    )

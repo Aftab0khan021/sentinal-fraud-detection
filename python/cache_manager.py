@@ -199,10 +199,11 @@ class CacheManager:
             if self.redis_client:
                 # Test Redis connection
                 self.redis_client.ping()
-                info = self.redis_client.info("stats")
+                # B16: fetch all sections at once to avoid two round-trips
+                info = self.redis_client.info()  # returns all sections
 
                 health["status"] = "healthy"
-                health["redis_version"] = self.redis_client.info("server").get("redis_version")
+                health["redis_version"] = info.get("redis_version")
                 health["total_keys"] = self.redis_client.dbsize()
                 health["hits"] = info.get("keyspace_hits", 0)
                 health["misses"] = info.get("keyspace_misses", 0)

@@ -1,12 +1,6 @@
-import { useContext } from 'react';
-import { AuthContext } from '@/contexts/AuthContext';
-
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
-
-    return context;
-};
+/**
+ * useAuth hook — single source of truth.
+ * Re-exported from AuthContext so there is only one implementation.
+ * The guard (throws if used outside <AuthProvider>) lives in AuthContext.tsx.
+ */
+export { useAuth } from '@/contexts/AuthContext';

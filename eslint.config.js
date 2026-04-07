@@ -23,4 +23,18 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // shadcn/ui auto-generated files intentionally co-export constants alongside
+    // components (e.g. buttonVariants, navigationMenuTriggerStyle).
+    // AuthContext exports both the provider component and the context object.
+    // Disable the react-refresh fast-refresh rule for these files only.
+    files: [
+      "src/components/ui/**/*.{ts,tsx}",
+      "src/contexts/AuthContext.tsx",
+    ],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );
+

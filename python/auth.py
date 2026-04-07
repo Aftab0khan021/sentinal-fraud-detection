@@ -276,19 +276,37 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-# Demo user database (in production, use a real database)
+# Demo user database (in production, use a real database).
+# SECURITY (B1): hashed passwords are loaded from environment variables.
+# To generate a hash:  python -c "from passlib.context import CryptContext; print(CryptContext(['bcrypt']).hash('yourpassword'))"
+# Then set DEMO_USER_HASH / ADMIN_USER_HASH in your .env file.
+_DEMO_HASH = os.getenv("DEMO_USER_HASH")
+_ADMIN_HASH = os.getenv("ADMIN_USER_HASH")
+
+if not _DEMO_HASH or not _ADMIN_HASH:
+    import warnings
+    warnings.warn(
+        "DEMO_USER_HASH / ADMIN_USER_HASH are not set in the environment. "
+        "Falling back to insecure hard-coded demo passwords. "
+        "Set these environment variables before production deployment.",
+        UserWarning,
+        stacklevel=1,
+    )
+    _DEMO_HASH = get_password_hash("demo123")
+    _ADMIN_HASH = get_password_hash("admin123")
+
 DEMO_USERS = {
     "demo@sentinal.ai": {
         "id": "demo_user_001",
         "email": "demo@sentinal.ai",
         "username": "Demo Analyst",
-        "hashed_password": get_password_hash("demo123"),
+        "hashed_password": _DEMO_HASH,
     },
     "admin@sentinal.ai": {
         "id": "admin_user_001",
         "email": "admin@sentinal.ai",
         "username": "Admin User",
-        "hashed_password": get_password_hash("admin123"),
+        "hashed_password": _ADMIN_HASH,
     },
 }
 

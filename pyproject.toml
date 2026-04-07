@@ -55,6 +55,7 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
+    "--cov-fail-under=40",  # B18: fail CI if total coverage drops below 40%
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

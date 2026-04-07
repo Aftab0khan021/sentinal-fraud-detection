@@ -16,7 +16,7 @@ Date: 2026-01-24
 import json
 import logging
 from typing import Dict, Any, Callable, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from kafka import KafkaProducer, KafkaConsumer
 from kafka.errors import KafkaError
 
@@ -56,8 +56,8 @@ class FraudDetectionProducer:
             user_id: Optional user ID for partitioning
         """
         # Add metadata
-        transaction["timestamp"] = transaction.get("timestamp", datetime.utcnow().isoformat())
-        transaction["ingestion_time"] = datetime.utcnow().isoformat()
+        transaction["timestamp"] = transaction.get("timestamp", datetime.now(timezone.utc).isoformat())
+        transaction["ingestion_time"] = datetime.now(timezone.utc).isoformat()
 
         # Send to Kafka
         future = self.producer.send(self.topic, key=user_id, value=transaction)
@@ -166,7 +166,7 @@ class FraudDetectionConsumer:
             "fraud_probability": result.get("fraud_probability"),
             "risk_level": result.get("risk_level"),
             "reason": result.get("reason"),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "alert_type": "real_time_fraud_detection",
         }
 

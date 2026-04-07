@@ -15,24 +15,26 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from data_gen import FinancialGraphGenerator
+# data_gen.py was renamed/superseded by data_gen_enhanced.py whose public class
+# is EnhancedFinancialGraphGenerator (no `fraud_ring_size` constructor arg;
+# inject_fraud_ring() is now inject_cyclic_ring(ring_size=...)).
+from data_gen_enhanced import EnhancedFinancialGraphGenerator
 
 
 class TestFinancialGraphGenerator:
-    """Test suite for FinancialGraphGenerator"""
+    """Test suite for EnhancedFinancialGraphGenerator"""
 
     def test_initialization(self):
         """Test generator initialization"""
-        generator = FinancialGraphGenerator(num_users=50, fraud_ring_size=3)
+        generator = EnhancedFinancialGraphGenerator(num_users=50)
 
         assert generator.num_users == 50
-        assert generator.fraud_ring_size == 3
         assert isinstance(generator.graph, nx.DiGraph)
         assert len(generator.transaction_types) == 3
 
     def test_generate_user_features(self):
         """Test user node feature generation"""
-        generator = FinancialGraphGenerator(num_users=20)
+        generator = EnhancedFinancialGraphGenerator(num_users=20)
         generator.generate_user_features()
 
         # Check all users created
@@ -51,13 +53,14 @@ class TestFinancialGraphGenerator:
             assert node_data["is_fraud"] in [0, 1]
 
     def test_inject_fraud_ring(self):
-        """Test fraud ring injection"""
-        generator = FinancialGraphGenerator(num_users=30, fraud_ring_size=5)
+        """Test fraud ring injection via inject_cyclic_ring"""
+        ring_size = 5
+        generator = EnhancedFinancialGraphGenerator(num_users=30)
         generator.generate_user_features()
-        fraud_users = generator.inject_fraud_ring()
+        fraud_users = generator.inject_cyclic_ring(ring_size=ring_size)
 
         # Check fraud ring size
-        assert len(fraud_users) == 5
+        assert len(fraud_users) == ring_size
 
         # Check all fraud users are marked
         for user_id in fraud_users:
@@ -78,7 +81,7 @@ class TestFinancialGraphGenerator:
 
     def test_generate_normal_transactions(self):
         """Test normal transaction generation"""
-        generator = FinancialGraphGenerator(num_users=25)
+        generator = EnhancedFinancialGraphGenerator(num_users=25)
         generator.generate_user_features()
         generator.generate_normal_transactions(num_transactions=50)
 
@@ -95,9 +98,9 @@ class TestFinancialGraphGenerator:
 
     def test_to_pytorch_geometric(self):
         """Test conversion to PyTorch Geometric format"""
-        generator = FinancialGraphGenerator(num_users=15, fraud_ring_size=3)
+        generator = EnhancedFinancialGraphGenerator(num_users=15)
         generator.generate_user_features()
-        generator.inject_fraud_ring()
+        generator.inject_cyclic_ring(ring_size=3)
         generator.generate_normal_transactions(num_transactions=30)
 
         pyg_data = generator.to_pytorch_geometric()
@@ -122,24 +125,19 @@ class TestFinancialGraphGenerator:
 
     def test_fraud_ring_cycle(self):
         """Test that fraud ring forms a complete cycle"""
-        generator = FinancialGraphGenerator(num_users=20, fraud_ring_size=4)
+        generator = EnhancedFinancialGraphGenerator(num_users=20)
         generator.generate_user_features()
-        fraud_users = generator.inject_fraud_ring()
+        fraud_users = generator.inject_cyclic_ring(ring_size=4)
 
         # Check cycle exists
         cycles = list(nx.simple_cycles(generator.graph))
-        fraud_cycle_found = False
-
-        for cycle in cycles:
-            if set(cycle) == set(fraud_users):
-                fraud_cycle_found = True
-                break
+        fraud_cycle_found = any(set(cycle) == set(fraud_users) for cycle in cycles)
 
         assert fraud_cycle_found, "Fraud ring should form a cycle"
 
     def test_no_self_loops_in_normal_transactions(self):
         """Test that normal transactions don't create self-loops"""
-        generator = FinancialGraphGenerator(num_users=20)
+        generator = EnhancedFinancialGraphGenerator(num_users=20)
         generator.generate_user_features()
         generator.generate_normal_transactions(num_transactions=100)
 
@@ -148,23 +146,33 @@ class TestFinancialGraphGenerator:
             assert u != v, "Should not have self-loops"
 
     def test_reproducibility(self):
-        """Test that results are reproducible with same seed"""
-        # First generation
-        generator1 = FinancialGraphGenerator(num_users=10, fraud_ring_size=3)
-        generator1.generate_user_features()
-        fraud_users1 = generator1.inject_fraud_ring()
+        """Test that results are reproducible when seeds are reset to the same state"""
+        import random as _random
+        import numpy as _np
+        import torch as _torch
 
-        # Second generation (seeds are reset in module)
-        generator2 = FinancialGraphGenerator(num_users=10, fraud_ring_size=3)
+        # First generation — reset seeds to a known value
+        _random.seed(42)
+        _np.random.seed(42)
+        _torch.manual_seed(42)
+        generator1 = EnhancedFinancialGraphGenerator(num_users=10)
+        generator1.generate_user_features()
+        fraud_users1 = generator1.inject_cyclic_ring(ring_size=3)
+
+        # Second generation — reset seeds to the same value
+        _random.seed(42)
+        _np.random.seed(42)
+        _torch.manual_seed(42)
+        generator2 = EnhancedFinancialGraphGenerator(num_users=10)
         generator2.generate_user_features()
-        fraud_users2 = generator2.inject_fraud_ring()
+        fraud_users2 = generator2.inject_cyclic_ring(ring_size=3)
 
         # Should generate same fraud users
         assert fraud_users1 == fraud_users2
 
     def test_edge_type_mapping(self):
         """Test that edge types are correctly mapped"""
-        generator = FinancialGraphGenerator(num_users=10)
+        generator = EnhancedFinancialGraphGenerator(num_users=10)
         generator.generate_user_features()
         generator.generate_normal_transactions(num_transactions=20)
 
@@ -176,7 +184,7 @@ class TestFinancialGraphGenerator:
 
     def test_node_feature_normalization(self):
         """Test that node features are properly normalized"""
-        generator = FinancialGraphGenerator(num_users=15)
+        generator = EnhancedFinancialGraphGenerator(num_users=15)
         generator.generate_user_features()
 
         pyg_data = generator.to_pytorch_geometric()
@@ -203,13 +211,13 @@ def test_main_function():
             os.makedirs("data", exist_ok=True)
 
             # Run main (this will save files)
-            from data_gen import main
+            from data_gen_enhanced import main
 
             main()
 
-            # Check files were created
-            assert os.path.exists("data/graph.pkl")
-            assert os.path.exists("data/graph_pyg.pt")
+            # Check files were created (enhanced generator uses _enhanced suffix)
+            assert os.path.exists("data/graph_enhanced.pkl")
+            assert os.path.exists("data/graph_pyg_enhanced.pt")
 
         finally:
             os.chdir(original_dir)

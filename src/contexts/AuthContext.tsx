@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import { jwtDecode } from 'jwt-decode';
 import { api } from '@/services/api'; // Bug #3: use shared api service instead of hardcoded localhost
 
@@ -14,7 +14,8 @@ interface AuthContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     login: (email: string, password: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
+
     refreshToken: () => Promise<void>;
 }
 
@@ -119,8 +120,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         } catch (error) {
             console.error('Token refresh error:', error);
-            // Clear everything on refresh failure
-            logout();
+            // B11: await logout so async state cleanup completes before re-throw
+            await logout();
             throw error;
         }
     }, [decodeToken, logout]);
@@ -154,6 +155,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         initAuth();
     }, [decodeToken, refreshToken]);
 
+    // Listen for the global logout event fired by the Axios interceptor when
+    // token refresh fails. This provides a clean React-state-aware logout without
+    // a hard window.location.href reload (which would conflict with React Router).
+    useEffect(() => {
+        const handleForcedLogout = async () => {
+            await logout();
+            // Push /login into browser history so React Router picks it up
+            window.history.pushState({}, '', '/login');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        };
+        window.addEventListener('sentinal:logout', handleForcedLogout as EventListener);
+        return () => window.removeEventListener('sentinal:logout', handleForcedLogout as EventListener);
+    }, [logout]);
+
+
     const value: AuthContextType = {
         user,
         token,
@@ -166,3 +182,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+// B17: useAuth guard — throws a descriptive error if used outside <AuthProvider>
+export const useAuth = (): AuthContextType => {
+    const ctx = useContext(AuthContext);
+    if (!ctx) {
+        throw new Error('useAuth must be used inside <AuthProvider>. Wrap your component tree with <AuthProvider>.');
+    }
+    return ctx;
+};
+

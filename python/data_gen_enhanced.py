@@ -88,6 +88,7 @@ class EnhancedFinancialGraphGenerator:
                 timestamp=timestamp + timedelta(hours=i),
                 transaction_type="transfer",
                 is_fraud_edge=1,
+                is_laundering=1,
                 pattern="cyclic_ring",
             )
 
@@ -130,6 +131,7 @@ class EnhancedFinancialGraphGenerator:
                 timestamp=timestamp + timedelta(minutes=i * 5),
                 transaction_type="transfer",
                 is_fraud_edge=1,
+                is_laundering=1,
                 pattern="fanout",
             )
 
@@ -169,6 +171,7 @@ class EnhancedFinancialGraphGenerator:
                 timestamp=timestamp + timedelta(seconds=i * 3),  # 3 seconds apart!
                 transaction_type="payment",
                 is_fraud_edge=1,
+                is_laundering=0,
                 pattern="rapidfire",
             )
 
@@ -212,6 +215,7 @@ class EnhancedFinancialGraphGenerator:
                 timestamp=timestamp + timedelta(hours=i),
                 transaction_type="transfer",
                 is_fraud_edge=1,
+                is_laundering=1,
                 pattern="scatter_gather_in",
             )
 
@@ -225,6 +229,7 @@ class EnhancedFinancialGraphGenerator:
                 timestamp=timestamp + timedelta(hours=num_sources + i),
                 transaction_type="transfer",
                 is_fraud_edge=1,
+                is_laundering=1,
                 pattern="scatter_gather_out",
             )
 
@@ -252,6 +257,7 @@ class EnhancedFinancialGraphGenerator:
                 timestamp=timestamp + timedelta(hours=random.randint(0, 720)),
                 transaction_type=tx_type,
                 is_fraud_edge=0,
+                is_laundering=0,
                 pattern="normal",
             )
 
@@ -305,36 +311,36 @@ def main():
     generator.generate_user_features()
 
     print("\n[2/6] Injecting fraud patterns...")
-
-    # Pattern 1: Cyclic ring (5 users)
     generator.inject_cyclic_ring(ring_size=5)
-
-    # Pattern 2: Fan-out (1 source, 8 targets)
     generator.inject_fanout_pattern(num_targets=8)
-
-    # Pattern 3: Rapid-fire (1 user, 15 transactions)
     generator.inject_rapidfire_pattern(num_transactions=15)
-
-    # Pattern 4: Scatter-gather (4 sources, hub, 4 targets)
     generator.inject_scatter_gather_pattern(num_sources=4, num_targets=4)
 
-    print(f"\n[3/6] Generating normal transactions...")
+    print("\n[3/6] Generating normal transactions...")
     generator.generate_normal_transactions(num_transactions=300)
 
-    print(f"\n[4/6] Converting to PyTorch Geometric format...")
+    print("\n[4/6] Converting to PyTorch Geometric format...")
     pyg_data = generator.to_pytorch_geometric()
 
-    print(f"\n[5/6] Saving data...")
+    print("\n[5/6] Saving data...")
     os.makedirs("data", exist_ok=True)
 
+    # B10: Save as a dict so api.py (data["graph"]) and agent_explainer.py can both
+    # load graph + fraud_scores from the same pkl file.
+    fraud_probability = {
+        node_id: float(generator.graph.nodes[node_id].get("risk_score_initial", 0.0))
+        for node_id in range(generator.num_users)
+    }
+    fraud_scores = {"fraud_probability": fraud_probability}
+
     with open("data/graph_enhanced.pkl", "wb") as f:
-        pickle.dump(generator.graph, f)
-    print("✓ NetworkX graph saved to data/graph_enhanced.pkl")
+        pickle.dump({"graph": generator.graph, "fraud_scores": fraud_scores}, f)
+    print("✓ Graph + fraud_scores saved to data/graph_enhanced.pkl")
 
     torch.save(pyg_data, "data/graph_pyg_enhanced.pt")
     print("✓ PyTorch Geometric data saved to data/graph_pyg_enhanced.pt")
 
-    print(f"\n[6/6] Summary...")
+    print("\n[6/6] Summary...")
     print("\n" + "=" * 70)
     print("ENHANCED GRAPH GENERATION SUMMARY")
     print("=" * 70)
