@@ -29,7 +29,10 @@ def client():
 @pytest.fixture
 def valid_token():
     """Generate a valid JWT token for testing"""
-    return create_access_token(data={"sub": "test_user"}, expires_delta=timedelta(minutes=30))
+    return create_access_token(
+        data={"sub": "test_user", "email": "test@sentinal.ai", "username": "Test User"},
+        expires_delta=timedelta(minutes=30),
+    )
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Callable, Optional
 from enum import Enum
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -374,7 +374,7 @@ class PatternLibrary:
                         "description": pattern.description,
                         "severity": pattern.severity.value,
                         "category": pattern.category,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
 

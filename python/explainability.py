@@ -18,8 +18,11 @@ import shap
 import numpy as np
 import pickle
 import json
+import logging
 from models import AnalyzeResponse
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class AdvancedExplainer:
@@ -31,7 +34,7 @@ class AdvancedExplainer:
             self.model = torch.load(model_path, map_location=self.device)
             self.model.eval()
         except Exception as e:
-            print(f"Error loading model for explainability: {e}")
+            logger.error("Error loading model for explainability: %s", e)
             self.model = None
 
         # Load Graph
@@ -39,7 +42,7 @@ class AdvancedExplainer:
             with open(graph_path.replace(".pkl", "_pyg_enhanced.pt"), "rb") as f:
                 self.data = torch.load(f, map_location=self.device)
         except Exception as e:
-            print(f"Error loading PyG graph for explainability: {e}")
+            logger.error("Error loading PyG graph for explainability: %s", e)
             self.data = None
 
         # Initialize Explainers if model/data loaded

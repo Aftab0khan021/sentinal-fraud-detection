@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { api } from '@/services/api'; // Bug #3: use shared api service instead of hardcoded localhost
 
@@ -35,6 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const navigate = useNavigate();
 
     // Decode and validate token
     const decodeToken = useCallback((accessToken: string): User | null => {
@@ -161,13 +163,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         const handleForcedLogout = async () => {
             await logout();
-            // Push /login into browser history so React Router picks it up
-            window.history.pushState({}, '', '/login');
-            window.dispatchEvent(new PopStateEvent('popstate'));
+            navigate('/login', { replace: true });
         };
         window.addEventListener('sentinal:logout', handleForcedLogout as EventListener);
         return () => window.removeEventListener('sentinal:logout', handleForcedLogout as EventListener);
-    }, [logout]);
+    }, [logout, navigate]);
 
 
     const value: AuthContextType = {

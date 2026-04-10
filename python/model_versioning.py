@@ -19,7 +19,7 @@ import mlflow
 import mlflow.pytorch
 import torch
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from feature_flags import is_feature_enabled, get_feature_value
 
@@ -84,9 +84,10 @@ class ModelRegistry:
 
             # Log metadata
             mlflow.set_tag("version", version)
-            mlflow.set_tag("timestamp", datetime.utcnow().isoformat())
+            mlflow.set_tag("timestamp", datetime.now(timezone.utc).isoformat())
             mlflow.set_tag("framework", "pytorch")
             mlflow.set_tag("model_type", "gnn")
+
 
             run_id = run.info.run_id
             logger.info(f"Model v{version} logged with run_id: {run_id}")
@@ -255,7 +256,7 @@ class ABTestingManager:
             mlflow.log_param("model_version", model_version)
             mlflow.log_metric("fraud_probability", prediction.get("fraud_probability", 0))
             mlflow.log_metric("is_fraud", int(prediction.get("is_fraud", False)))
-            mlflow.set_tag("timestamp", datetime.utcnow().isoformat())
+            mlflow.set_tag("timestamp", datetime.now(timezone.utc).isoformat())
 
 
 # Global instances

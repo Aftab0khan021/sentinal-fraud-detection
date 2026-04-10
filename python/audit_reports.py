@@ -17,7 +17,7 @@ import hmac
 import hashlib
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 
 # Constants
@@ -76,7 +76,7 @@ class LogVerifier:
 def generate_report(days: int = 1):
     """Generate a summary report for the last N days"""
     verifier = LogVerifier()
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     stats = {"fraud_detected": 0, "analyses_run": 0, "errors": 0, "users_analyzed": set()}
 
@@ -97,7 +97,7 @@ def generate_report(days: int = 1):
                     entry = json.loads(line)
                     ts = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
 
-                    if ts.replace(tzinfo=None) < start_date:
+                    if ts < start_date:
                         continue
 
                     if not verifier.verify_signature(entry.copy()):

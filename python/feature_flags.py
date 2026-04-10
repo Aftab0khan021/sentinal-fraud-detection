@@ -17,6 +17,7 @@ Date: 2026-01-24
 import os
 import json
 import hashlib
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from enum import Enum
 import logging
@@ -242,7 +243,7 @@ class FeatureFlags:
             flag_data = {
                 "enabled": enabled,
                 "value": value,
-                "updated_at": __import__("datetime").datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
             if rollout_percentage is not None:
