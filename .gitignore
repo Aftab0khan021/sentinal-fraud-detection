@@ -13,6 +13,12 @@ env/
 ENV/
 .venv/
 
+# Fragmented requirements files (use requirements.txt only)
+python/requirements-*.txt
+
+# Generated ML config / tuning artifacts
+python/config/
+
 # Python cache and compiled files
 __pycache__/
 *.py[cod]
@@ -97,10 +103,11 @@ python/models/*.h5
 python/models/*.onnx
 !python/models/.gitkeep
 
-# Reports
+# Reports — keep key outputs, exclude huge generated HTML files
 python/reports/*.json
 python/reports/*.png
 python/reports/*.pdf
+python/reports/*.html
 !python/reports/.gitkeep
 
 # --- Logs ---
@@ -198,9 +205,10 @@ docs/.doctrees/
 tmp/
 temp/
 
-# --- Lock Files (Keep package-lock.json and bun.lockb) ---
-# We keep lock files for reproducible builds
-# But exclude other lock files
+# --- Lock Files (Keep package-lock.json only) ---
+# We keep package-lock.json for reproducible npm builds
+# bun.lockb excluded — project uses npm
+bun.lockb
 .pnp.*
 .yarn/cache
 .yarn/unplugged
