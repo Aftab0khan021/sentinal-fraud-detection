@@ -1,7 +1,45 @@
 version: '3.8'
 
+# ──────────────────────────────────────────────────────
+#  YAML Anchor: shared API service definition
+# ──────────────────────────────────────────────────────
+x-api-service: &api-service
+  build:
+    context: ./python
+    dockerfile: Dockerfile
+  environment:
+    - ENVIRONMENT=production
+    - API_HOST=0.0.0.0
+    - API_PORT=8000
+    - ALLOWED_ORIGINS=http://localhost:3000,https://localhost
+    - REDIS_HOST=redis-master
+    - REDIS_PORT=6379
+    - REDIS_ENABLED=true
+    - REDIS_PASSWORD=${REDIS_PASSWORD:-sentinal_redis_2024}
+    - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+    - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-CHANGE_THIS_REFRESH}
+    - DEMO_USER_HASH=${DEMO_USER_HASH}
+    - ADMIN_USER_HASH=${ADMIN_USER_HASH}
+    - TRACING_ENABLED=${TRACING_ENABLED:-false}
+  volumes:
+    - ./python/logs:/app/logs
+    - ./python/data:/app/data
+    - ./python/models:/app/models
+  depends_on:
+    redis-master:
+      condition: service_healthy
+  restart: unless-stopped
+  networks:
+    - sentinal-net
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+
 services:
-  # NGINX Load Balancer
+  # ── NGINX Load Balancer ──────────────────────────────
   nginx:
     build:
       context: ./nginx
@@ -22,11 +60,9 @@ services:
       timeout: 5s
       retries: 3
 
-  # API Instance 1
+  # ── API Instances (3 replicas behind nginx) ──────────
   api-1:
-    build: 
-      context: ./python
-      dockerfile: Dockerfile
+    <<: *api-service
     environment:
       - ENVIRONMENT=production
       - API_HOST=0.0.0.0
@@ -36,30 +72,14 @@ services:
       - REDIS_PORT=6379
       - REDIS_ENABLED=true
       - REDIS_PASSWORD=${REDIS_PASSWORD:-sentinal_redis_2024}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-CHANGE_THIS_REFRESH}
+      - DEMO_USER_HASH=${DEMO_USER_HASH}
+      - ADMIN_USER_HASH=${ADMIN_USER_HASH}
       - INSTANCE_ID=api-1
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
-      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-your-refresh-secret-key}
-    volumes:
-      - ./python/logs:/app/logs
-      - ./python/data:/app/data
-      - ./python/models:/app/models
-    depends_on:
-      - redis-master
-    restart: unless-stopped
-    networks:
-      - sentinal-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
-  # API Instance 2
   api-2:
-    build: 
-      context: ./python
-      dockerfile: Dockerfile
+    <<: *api-service
     environment:
       - ENVIRONMENT=production
       - API_HOST=0.0.0.0
@@ -69,30 +89,14 @@ services:
       - REDIS_PORT=6379
       - REDIS_ENABLED=true
       - REDIS_PASSWORD=${REDIS_PASSWORD:-sentinal_redis_2024}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-CHANGE_THIS_REFRESH}
+      - DEMO_USER_HASH=${DEMO_USER_HASH}
+      - ADMIN_USER_HASH=${ADMIN_USER_HASH}
       - INSTANCE_ID=api-2
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
-      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-your-refresh-secret-key}
-    volumes:
-      - ./python/logs:/app/logs
-      - ./python/data:/app/data
-      - ./python/models:/app/models
-    depends_on:
-      - redis-master
-    restart: unless-stopped
-    networks:
-      - sentinal-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
-  # API Instance 3
   api-3:
-    build: 
-      context: ./python
-      dockerfile: Dockerfile
+    <<: *api-service
     environment:
       - ENVIRONMENT=production
       - API_HOST=0.0.0.0
@@ -102,25 +106,13 @@ services:
       - REDIS_PORT=6379
       - REDIS_ENABLED=true
       - REDIS_PASSWORD=${REDIS_PASSWORD:-sentinal_redis_2024}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-CHANGE_THIS_REFRESH}
+      - DEMO_USER_HASH=${DEMO_USER_HASH}
+      - ADMIN_USER_HASH=${ADMIN_USER_HASH}
       - INSTANCE_ID=api-3
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
-      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:-your-refresh-secret-key}
-    volumes:
-      - ./python/logs:/app/logs
-      - ./python/data:/app/data
-      - ./python/models:/app/models
-    depends_on:
-      - redis-master
-    restart: unless-stopped
-    networks:
-      - sentinal-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
+  # ── Frontend ─────────────────────────────────────────
   frontend:
     build:
       context: .
@@ -133,58 +125,62 @@ services:
     networks:
       - sentinal-net
 
-  # Redis Master
+  # ── Redis (Master + 2 Replicas + 3 Sentinels) ────────
   redis-master:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis-master-data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-sentinal_redis_2024}
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-sentinal_redis_2024}
     restart: unless-stopped
     networks:
       - sentinal-net
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sentinal_redis_2024}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
 
-  # Redis Replica 1
   redis-replica-1:
     image: redis:7-alpine
     volumes:
       - redis-replica-1-data:/data
-    command: redis-server --replicaof redis-master 6379 --requirepass ${REDIS_PASSWORD:-sentinal_redis_2024} --masterauth ${REDIS_PASSWORD:-sentinal_redis_2024} --appendonly yes
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --requirepass ${REDIS_PASSWORD:-sentinal_redis_2024}
+      --masterauth ${REDIS_PASSWORD:-sentinal_redis_2024}
+      --appendonly yes
     depends_on:
-      - redis-master
+      redis-master:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - sentinal-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
 
-  # Redis Replica 2
   redis-replica-2:
     image: redis:7-alpine
     volumes:
       - redis-replica-2-data:/data
-    command: redis-server --replicaof redis-master 6379 --requirepass ${REDIS_PASSWORD:-sentinal_redis_2024} --masterauth ${REDIS_PASSWORD:-sentinal_redis_2024} --appendonly yes
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --requirepass ${REDIS_PASSWORD:-sentinal_redis_2024}
+      --masterauth ${REDIS_PASSWORD:-sentinal_redis_2024}
+      --appendonly yes
     depends_on:
-      - redis-master
+      redis-master:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - sentinal-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
 
-  # Redis Sentinel 1
   redis-sentinel-1:
     image: redis:7-alpine
     command: redis-sentinel /etc/redis/sentinel.conf
@@ -199,7 +195,6 @@ services:
     networks:
       - sentinal-net
 
-  # Redis Sentinel 2
   redis-sentinel-2:
     image: redis:7-alpine
     command: redis-sentinel /etc/redis/sentinel.conf
@@ -214,7 +209,6 @@ services:
     networks:
       - sentinal-net
 
-  # Redis Sentinel 3
   redis-sentinel-3:
     image: redis:7-alpine
     command: redis-sentinel /etc/redis/sentinel.conf
@@ -229,8 +223,9 @@ services:
     networks:
       - sentinal-net
 
+  # ── Monitoring ───────────────────────────────────────
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
     ports:
       - "9090:9090"
     volumes:
@@ -246,9 +241,8 @@ services:
       - sentinal-net
     restart: unless-stopped
 
-  # AlertManager
   alertmanager:
-    image: prom/alertmanager
+    image: prom/alertmanager:latest
     ports:
       - "9093:9093"
     volumes:
@@ -262,7 +256,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:latest
     ports:
       - "3001:3000"
     volumes:
@@ -278,20 +272,15 @@ services:
       - sentinal-net
     restart: unless-stopped
 
-  # Jaeger (All-in-One for development)
+  # ── Jaeger (OTLP-compatible tracing UI) ─────────────
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "5775:5775/udp"
-      - "6831:6831/udp"
-      - "6832:6832/udp"
-      - "5778:5778"
-      - "16686:16686"  # Jaeger UI
-      - "14268:14268"
-      - "14250:14250"
-      - "9411:9411"
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC (matches OTEL_EXPORTER_OTLP_ENDPOINT)
+      - "4318:4318"     # OTLP HTTP
     environment:
-      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - COLLECTOR_OTLP_ENABLED=true
       - SPAN_STORAGE_TYPE=badger
       - BADGER_EPHEMERAL=false
       - BADGER_DIRECTORY_VALUE=/badger/data
