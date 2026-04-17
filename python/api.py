@@ -71,7 +71,7 @@ BASE_DIR = Path(__file__).resolve().parent
 os.chdir(BASE_DIR)
 
 VERSION = "2.0.0"  # Single source of truth for API version
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 RATE_LIMIT = os.getenv("RATE_LIMIT_PER_MINUTE", "10")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
@@ -301,78 +301,6 @@ async def general_exception_handler(request: Request, exc: Exception):
             "status_code": 500,
         },
     )
-
-
-# Startup Event
-@app.on_event("startup")
-async def startup_event():
-    """Initialize resources on startup"""
-    logger.info("=" * 50)
-    logger.info("Starting SentinAL Fraud Detection API")
-    logger.info(f"Environment: {ENVIRONMENT}")
-    logger.info(f"Allowed Origins: {ALLOWED_ORIGINS}")
-    logger.info(f"Instance ID: {os.getenv('INSTANCE_ID', 'unknown')}")
-    logger.info("=" * 50)
-
-    # Initialize distributed tracing
-    try:
-        logger.info("Initializing distributed tracing...")
-        init_tracing(
-            app, service_name="sentinal-api", service_version=VERSION
-        )  # was hardcoded "2.0.0"
-    except Exception as e:
-        logger.warning(f"Failed to initialize tracing: {e}")
-
-    # Load graph data
-    global graph, fraud_scores, agent  # Bug #8: `agent` must be declared global here
-    try:
-        logger.info("Loading transaction graph data...")
-        import pickle
-
-        with open("data/graph_enhanced.pkl", "rb") as f:
-            data = pickle.load(f)
-
-        graph = data["graph"]
-        fraud_scores = data["fraud_scores"]
-
-        logger.info(
-            f"✓ Loaded graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges"
-        )
-        logger.info(f"✓ Loaded fraud scores for {len(fraud_scores)} users")
-    except Exception as e:
-        logger.error(f"❌ Failed to load graph data: {e}")
-        graph = None
-        fraud_scores = None
-
-    # Initialize AI Agent (requires graph data to be loaded first)
-    if graph is not None and fraud_scores is not None:
-        try:
-            logger.info("Initializing GraphRAG Fraud Explainer Agent...")
-            agent = FraudExplainerAgent(graph=graph, fraud_scores=fraud_scores)
-            app.state.fraud_agent = agent
-            logger.info("✓ AI Agent ready with Ollama")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize AI agent: {e}")
-            logger.warning("API will run without AI explanations")
-            agent = None
-    else:
-        logger.warning("Skipping AI agent initialization (graph data not loaded)")
-        agent = None
-
-    # Initialize Explainer Module
-    try:
-        logger.info("Initializing Advanced Explainer Module...")
-        init_explainer_module()
-        logger.info("✓ Explainer module ready")
-    except Exception as e:
-        logger.error(f"❌ Failed to init explainer: {e}")
-
-    logger.info("=" * 50)
-    logger.info("✓ SentinAL API Ready")
-    logger.info("=" * 50)
-
-    # Track startup time for uptime calculation
-    app.state.start_time = time.time()
 
 
 # Endpoints
