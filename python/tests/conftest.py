@@ -7,11 +7,24 @@ Author: SentinAL Security Team
 Date: 2026-01-23
 """
 
+import os
 import pytest
 from fastapi.testclient import TestClient
 from datetime import timedelta
 import sys
 from pathlib import Path
+
+# ── Set required env vars BEFORE importing any app modules ─────────────────
+# api.py raises RuntimeError in production if JWT_SECRET_KEY is the default,
+# and auth.py / audit_logger.py emit warnings. Set test values here so the
+# entire test suite works without a real .env file.
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only")
+os.environ.setdefault("JWT_REFRESH_SECRET_KEY", "test-refresh-key-for-pytest-only")
+os.environ.setdefault("ENVIRONMENT", "development")
+os.environ.setdefault("REDIS_ENABLED", "false")   # no Redis needed during tests
+os.environ.setdefault("DEMO_USER_HASH", "")        # triggers fallback hash — acceptable in tests
+os.environ.setdefault("ADMIN_USER_HASH", "")
+# ───────────────────────────────────────────────────────────────────────────
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

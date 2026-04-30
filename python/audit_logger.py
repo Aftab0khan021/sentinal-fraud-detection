@@ -77,7 +77,7 @@ class AuditLogger:
         event_type: str,
         user_id: Optional[str] = None,
         action: str = "",
-        details: Dict[str, Any] = None,
+        details: Optional[Dict[str, Any]] = None,
         status: str = "SUCCESS",
     ):
         """

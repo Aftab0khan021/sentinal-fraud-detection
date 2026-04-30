@@ -72,8 +72,8 @@ SentinAL combines cutting-edge Graph Machine Learning with Large Language Model 
    ```bash
    # Install from https://ollama.ai/
    
-   # Pull the Llama3 model
-   ollama pull llama3
+   # Pull the Llama 3.2 1B model (used by default in agent_explainer.py)
+   ollama pull llama3.2:1b
    
    # Start Ollama server (in a separate terminal)
    ollama serve
@@ -182,7 +182,7 @@ Softmax
 
 ### Why Local LLMs?
 
-**Privacy is paramount in financial applications.** By using Ollama with locally-running models (Llama3/Mistral), we ensure:
+**Privacy is paramount in financial applications.** By using Ollama with locally-running models (Llama 3.2 1B / Mistral), we ensure:
 
 ✅ **No data exfiltration** - Transaction data never sent to external APIs  
 ✅ **Compliance-friendly** - Meets GDPR/PCI-DSS requirements  

@@ -229,7 +229,7 @@ def main():
 
     # Load data
     print("\n📂 Loading graph data...")
-    data = torch.load("data/graph_pyg.pt", weights_only=False)
+    data = torch.load("data/graph_pyg_enhanced.pt", weights_only=False)
     print(f"✓ Loaded graph with {data.num_nodes} nodes and {data.num_edges} edges")
 
     # Train model

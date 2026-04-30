@@ -19,8 +19,9 @@ import pickle
 from typing import List, Dict
 import warnings
 
-# Suppress warnings to keep output clean
-warnings.filterwarnings("ignore")
+# Suppress only known noisy third-party warnings — not all warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 # Import cache manager for distributed caching
 from cache_manager import get_cache_manager
@@ -161,7 +162,7 @@ class FraudExplainerAgent:
     Simplified Agent that gathers data first, then asks LLM to summarize.
     """
 
-    def __init__(self, graph: nx.DiGraph, fraud_scores: Dict, model: str = "llama3"):
+    def __init__(self, graph: nx.DiGraph, fraud_scores: Dict, model: str = "llama3.2:1b"):
         self.graph = graph
         self.fraud_scores = fraud_scores
         self.tool = GraphQueryTool(graph, fraud_scores)

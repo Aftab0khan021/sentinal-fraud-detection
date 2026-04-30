@@ -7,6 +7,13 @@ Author: SentinAL Security Team
 Date: 2026-01-23
 """
 
+import os
+# Set env vars before any app import (mirrors conftest.py)
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only")
+os.environ.setdefault("JWT_REFRESH_SECRET_KEY", "test-refresh-key-for-pytest-only")
+os.environ.setdefault("ENVIRONMENT", "development")
+os.environ.setdefault("REDIS_ENABLED", "false")
+
 import pytest
 from datetime import timedelta
 import jwt
